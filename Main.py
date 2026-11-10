@@ -74,6 +74,26 @@ except (OSError, sqlite3.Error, RuntimeError) as error:
     sys.exit(1)
 
 
+# Cuentas persistentes; se crea Admin/Admin solo en la primera instalación.
+from usuarios import SesionUsuarios, DialogoAcceso, PaginaUsuarios
+from PySide6.QtWidgets import QDialog
+try:
+    sesion = SesionUsuarios(ruta_base_datos)
+except sqlite3.Error as error:
+    QMessageBox.critical(None, "Usuarios", f"No se pudieron preparar los usuarios: {error}")
+    sys.exit(1)
+
+def requiere_admin():
+    if sesion.es_admin():
+        return True
+    QMessageBox.warning(ventana, "Acceso restringido", "Solo Admin puede acceder a esta opción.")
+    return False
+
+def abrir_seccion_admin(pagina):
+    if requiere_admin():
+        titulo_pagina.setText("Configuración")
+        paginas.setCurrentWidget(pagina)
+
 # Cargar la pantalla principal
 def cargar_ui(nombre_archivo):
     archivo = QFile(str(carpeta / nombre_archivo))
@@ -362,6 +382,8 @@ btn_historial_semana.clicked.connect(
 
 
 def abrir_historial():
+    if not requiere_admin():
+        return
     cargar_historial()
     titulo_pagina.setText("Historial")
     paginas.setCurrentWidget(pagina_historial)
@@ -689,6 +711,8 @@ def finalizar_cobro(nombre_mesa):
 
 
 def cargar_historial():
+    if not requiere_admin():
+        return
     tabla_historial.setRowCount(0)
 
     ruta_db = ruta_base_datos
@@ -1339,7 +1363,7 @@ btn_menu_configuracion = ventana.findChild(
     QPushButton, "btnMenuConfiguracion"
 )
 btn_menu_configuracion.clicked.connect(
-    lambda: paginas.setCurrentWidget(pagina_configuracion)
+    lambda: abrir_seccion_admin(pagina_configuracion)
 )
 # Pantalla de productos
 pagina_productos = QWidget()
@@ -1368,7 +1392,7 @@ layout_productos.addStretch()
 paginas.addWidget(pagina_productos)
 
 btn_abrir_productos.clicked.connect(
-    lambda: paginas.setCurrentWidget(pagina_productos)
+    lambda: abrir_seccion_admin(pagina_productos)
 )
 mensaje_producto = QLabel("")
 mensaje_producto.setStyleSheet("color: #8ED6A0; font-size: 16px;")
@@ -1392,6 +1416,8 @@ layout_productos.insertWidget(posicion + 1, vista_imagen_producto)
 
 
 def elegir_imagen_producto():
+    if not requiere_admin():
+        return
     global ruta_imagen_elegida
 
     ruta, _ = QFileDialog.getOpenFileName(
@@ -1453,6 +1479,8 @@ def guardar_imagen_producto():
 
     return str(destino)
 def guardar_producto():
+    if not requiere_admin():
+        return
     from decimal import Decimal, InvalidOperation
 
     nombre = txt_nombre_producto.text().strip()
@@ -1578,6 +1606,8 @@ layout_productos.insertWidget(
 
 
 def eliminar_producto():
+    if not requiere_admin():
+        return
     elemento = lista_catalogo.currentItem()
 
     if elemento is None:
@@ -1745,6 +1775,86 @@ class AdaptarPanelesProductos(QObject):
 
 adaptador_productos = AdaptarPanelesProductos(pagina_productos)
 pagina_productos.installEventFilter(adaptador_productos)
+
+# Gestión de usuarios y límites de navegación según la sesión.
+pagina_usuarios = PaginaUsuarios(sesion, lambda: abrir_seccion_admin(pagina_configuracion))
+paginas.addWidget(pagina_usuarios)
+btn_usuarios = QPushButton("Usuarios y permisos")
+layout_configuracion.insertWidget(layout_configuracion.count() - 1, btn_usuarios)
+
+def abrir_usuarios():
+    if requiere_admin():
+        pagina_usuarios.actualizar()
+        titulo_pagina.setText("Usuarios y permisos")
+        paginas.setCurrentWidget(pagina_usuarios)
+
+btn_usuarios.clicked.connect(abrir_usuarios)
+panel_lateral = ventana.findChild(QWidget, "PanelLateral")
+botones_navegacion = panel_lateral.findChildren(QPushButton)
+etiqueta_sesion = QLabel()
+etiqueta_sesion.setWordWrap(True)
+etiqueta_sesion.setStyleSheet("color: #F2C66D; font-size: 13px; padding: 8px;")
+btn_cerrar_sesion = QPushButton("Cerrar sesión")
+btn_cerrar_sesion.setObjectName("btnCerrarSesion")
+contenido_menu = btn_menu_mesas.parentWidget()
+if panel_lateral.layout() is None:
+    distribucion_lateral = QVBoxLayout(panel_lateral)
+    distribucion_lateral.setContentsMargins(0, 0, 0, 0)
+    distribucion_lateral.addWidget(contenido_menu)
+contenido_menu.layout().addWidget(etiqueta_sesion)
+contenido_menu.layout().addWidget(btn_cerrar_sesion)
+paginas_operacion = (pagina_mesas, pagina_pedido, pagina_cobro)
+
+def proteger_navegacion(indice):
+    if not sesion.es_admin() and paginas.currentWidget() not in paginas_operacion:
+        abrir_mesas()
+
+paginas.currentChanged.connect(proteger_navegacion)
+
+def aplicar_permisos():
+    admin = sesion.es_admin()
+    for boton in botones_navegacion:
+        permitido = sesion.usuario is not None and (admin or boton is btn_menu_mesas)
+        boton.setVisible(permitido)
+        boton.setEnabled(permitido)
+    for pagina in (pagina_historial, pagina_configuracion, pagina_productos, pagina_usuarios):
+        pagina.setEnabled(admin)
+    paginas.setEnabled(sesion.usuario is not None)
+    etiqueta_sesion.setText(
+        f"{sesion.usuario['nombre']} · {'Admin' if admin else 'Mesas'}"
+        if sesion.usuario else "Sin sesión"
+    )
+    abrir_mesas()
+
+acceso = DialogoAcceso(sesion, ventana)
+
+def cerrar_sesion():
+    # Los pedidos abiertos se conservan al cambiar de empleado.
+    control_espera.capa.hide()
+    sesion.cerrar()
+    tabla_historial.setRowCount(0)
+    pagina_usuarios.limpiar()
+    txt_nombre_producto.clear()
+    txt_precio_producto.clear()
+    txt_categoria_producto.clear()
+    aplicar_permisos()
+    if acceso.exec() == QDialog.DialogCode.Accepted:
+        aplicar_permisos()
+        control_espera.temporizador.start()
+    else:
+        ventana.close()
+
+btn_cerrar_sesion.clicked.connect(cerrar_sesion)
+
+# Pedir credenciales antes de mostrar cualquier contenido del restaurante.
+aplicar_permisos()
+if acceso.exec() != QDialog.DialogCode.Accepted:
+    sys.exit(0)
+aplicar_permisos()
+
+# Pantalla de espera automática tras dos minutos sin actividad.
+from pantalla_espera import ControlEspera
+control_espera = ControlEspera(ventana, segundos=120)
 
 # Mostrar la aplicación
 ventana.show()
