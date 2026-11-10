@@ -7,7 +7,8 @@ from contextlib import contextmanager
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from threading import Thread
+from threading import Thread, Lock
+from time import monotonic
 from urllib.parse import urlsplit
 import hmac
 import json
@@ -26,6 +27,11 @@ class SolicitudesTable:
                 estado TEXT NOT NULL DEFAULT 'pendiente', fecha TEXT NOT NULL,
                 responsable_id INTEGER, resuelta TEXT
             )''')
+
+            columnas = {r[1] for r in db.execute('PRAGMA table_info(solicitudes_table)')}
+            for campo, tipo in [('emisor_id', 'INTEGER'), ('emisor', 'TEXT')]:
+                if campo not in columnas:
+                    db.execute(f'ALTER TABLE solicitudes_table ADD COLUMN {campo} {tipo}')
 
     @contextmanager
     def conexion(self):
@@ -59,7 +65,7 @@ class SolicitudesTable:
                 'SELECT 1 FROM clientes WHERE id = ? AND mesa = ?', (cliente_id, mesa)).fetchone()):
             raise ValueError('El cliente ya no pertenece a esta mesa.')
 
-    def enviar(self, datos):
+    def enviar(self, datos, empleado=None):
         if not isinstance(datos, dict):
             raise ValueError('Solicitud inválida.')
         try:
@@ -96,9 +102,10 @@ class SolicitudesTable:
                 productos.extend([dict(producto_id=linea['producto_id'], nombre=fila[0],
                                        categoria=fila[1], precio=fila[2] / 100)] * cantidad)
             db.execute('''INSERT INTO solicitudes_table
-                (id, dispositivo, mesa, cliente_id, productos, nota, fecha)
-                VALUES (?, ?, ?, ?, ?, ?, ?)''', (identificador, dispositivo.strip(), mesa, cliente,
-                json.dumps(productos, ensure_ascii=False), nota.strip(), datetime.now().isoformat(timespec='seconds')))
+                (id, dispositivo, mesa, cliente_id, productos, nota, fecha, emisor_id, emisor)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''', (identificador, dispositivo.strip(), mesa, cliente,
+                json.dumps(productos, ensure_ascii=False), nota.strip(), datetime.now().isoformat(timespec='seconds'),
+                empleado['id'] if empleado else None, empleado['usuario'] if empleado else None))
         return dict(id=identificador, estado='pendiente')
 
     def listar(self):
@@ -143,7 +150,8 @@ class SolicitudesTable:
 
 
 class ServidorTable:
-    def __init__(self, solicitudes):
+    def __init__(self, solicitudes, identificar):
+        self.identificar = identificar
         self.solicitudes = solicitudes
         self.http = None
         self.clave = ''
@@ -154,6 +162,10 @@ class ServidorTable:
         self.clave = secrets.token_urlsafe(24)
         servicio, clave = self.solicitudes, self.clave
         pagina = Path(__file__).with_name('pedidos_table.html').read_bytes()
+
+        sesiones = {}
+        bloqueo = Lock()
+        identificar = self.identificar
 
         class Handler(BaseHTTPRequestHandler):
             def setup(self):
@@ -176,6 +188,16 @@ class ServidorTable:
                 self.wfile.write(contenido)
 
             def autorizado(self):
+                token = self.headers.get('X-Sesion', '')
+                with bloqueo:
+                    cuenta, caduca = sesiones.get(token, (None, 0))
+                    if caduca <= monotonic():
+                        sesiones.pop(token, None)
+                        return False
+                    self.empleado = cuenta
+                return self.enlace_valido()
+
+            def enlace_valido(self):
                 return hmac.compare_digest(self.headers.get('Authorization', '').encode('utf-8'), ('Bearer ' + clave).encode('utf-8'))
 
             def do_GET(self):
@@ -205,9 +227,14 @@ class ServidorTable:
                     self.responder(503, dict(error='No se pudo leer. Inténtalo de nuevo.'))
 
             def do_POST(self):
-                if not self.autorizado():
-                    return self.responder(401, dict(error='Clave incorrecta o conexión reiniciada.'))
-                if self.path != '/api/solicitudes':
+                login = self.path == '/api/login'
+                if not self.enlace_valido() or (not login and not self.autorizado()):
+                    return self.responder(401, dict(error='Inicia sesión con tu cuenta.'))
+                if self.path == '/api/logout':
+                    with bloqueo:
+                        sesiones.pop(self.headers.get('X-Sesion'), None)
+                    return self.responder(200, {})
+                if not login and self.path != '/api/solicitudes':
                     return self.responder(404, dict(error='Recurso no encontrado.'))
                 try:
                     longitud = int(self.headers.get('Content-Length', '0'))
@@ -216,7 +243,20 @@ class ServidorTable:
                     if self.headers.get('Content-Type', '').split(';')[0] != 'application/json':
                         raise ValueError('Se requiere JSON.')
                     datos = json.loads(self.rfile.read(longitud))
-                    self.responder(200, servicio.enviar(datos))
+                    if login:
+                        if not isinstance(datos, dict):
+                            raise ValueError('Credenciales inválidas.')
+                        usuario, password = datos.get('usuario'), datos.get('password')
+                        if not all(isinstance(v, str) and 0 < len(v) <= 128 for v in (usuario, password)):
+                            raise ValueError('Introduce tu usuario y contraseña.')
+                        empleado = identificar(usuario, password)
+                        if not empleado:
+                            return self.responder(401, dict(error='Usuario o contraseña incorrectos.'))
+                        token = secrets.token_urlsafe(32)
+                        with bloqueo:
+                            sesiones[token] = empleado, monotonic() + 8 * 3600
+                        return self.responder(200, dict(token=token, usuario=empleado['usuario']))
+                    self.responder(200, servicio.enviar(datos, self.empleado))
                 except (ValueError, UnicodeDecodeError) as e:
                     self.responder(400, dict(error=str(e)))
                 except sqlite3.Error:

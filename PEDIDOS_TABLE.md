@@ -19,9 +19,10 @@ pedidos. Esta versión no es un kiosco público para clientes.
    Si Windows pregunta por Python, permite el acceso únicamente en redes
    privadas. Se utiliza el puerto TCP 8765. Una red de invitados con aislamiento
    entre dispositivos puede impedir la conexión.
-6. Elige mesa, cuenta general o cliente ya asignado, productos y cantidades.
+6. Inicia sesión con tu propio usuario y contraseña del TPV. La caja muestra el usuario que envió cada solicitud. Usa **Cerrar sesión** para cambiar de empleado. La sesión móvil vence a las ocho horas.
+7. Elige mesa, cuenta general o cliente ya asignado, productos y cantidades.
    Escribe un nombre para el dispositivo y pulsa **Enviar a caja**.
-7. En la PC, Admin o un cajero con turno activo abre **PedidosTable**, selecciona
+8. En la PC, Admin o un cajero con turno activo abre **PedidosTable**, selecciona
    la solicitud y la acepta o rechaza. La cuenta del celular se actualiza cada
    ocho segundos. Las solicitudes nuevas aparecen en la PC aproximadamente
    cada 2,5 segundos.
@@ -40,9 +41,9 @@ sus solicitudes pendientes para que no pasen a una cuenta posterior.
 
 ## Conexión y límites
 
-- Usa una red privada de confianza: esta primera versión usa HTTP local.
-  No abras este puerto al Internet. La clave concede acceso al menú, mesas y
-  cuentas del personal; no concede permiso para aceptar, cobrar o administrar.
+- Usa una red privada de confianza: esta primera versión usa HTTP local y las credenciales viajan sin cifrado de transporte.
+  No abras este puerto al Internet. El enlace y una cuenta del personal permiten consultar menú, mesas y
+  cuentas; no concede permiso para aceptar, cobrar o administrar.
 - Solo Admin activa o desactiva el servidor. Desactivarlo corta la conexión;
   reactivarlo genera una clave nueva. Al cerrar el programa se detiene.
 - Un envío sin respuesta conserva su identificador y se puede reintentar sin

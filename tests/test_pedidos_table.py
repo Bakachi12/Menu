@@ -161,7 +161,7 @@ class TestPedidosTable(unittest.TestCase):
         self.assertEqual(self.servicio.resumen()['mesas'][0]['cuenta'], [])
 
     def test_http_autenticacion_envio_estado_y_rotacion(self):
-        servidor = ServidorTable(self.servicio)
+        servidor = ServidorTable(self.servicio, lambda u, p: dict(id=4, usuario=u) if (u,p)==('ana','prueba') else None)
         puerto = servidor.iniciar(host='127.0.0.1', puerto=0)
         self.addCleanup(servidor.detener)
         url = f'http://127.0.0.1:{puerto}'
@@ -171,14 +171,29 @@ class TestPedidosTable(unittest.TestCase):
             urlopen(url + '/api/resumen')
         self.assertEqual(error.exception.code, 401)
         clave = servidor.clave
+        headers = {'Authorization': 'Bearer ' + clave, 'Content-Type': 'application/json'}
+        with self.assertRaises(HTTPError):
+            urlopen(Request(url + '/api/resumen', headers=headers))
+        def login(password):
+            return urlopen(Request(url+'/api/login', headers=headers,
+                            data=json.dumps(dict(usuario='ana',password=password)).encode()))
+        with self.assertRaises(HTTPError):
+            login('incorrecta')
+        with login('prueba') as respuesta:
+            headers['X-Sesion'] = json.load(respuesta)['token']
         req = Request(url + '/api/solicitudes', data=json.dumps(self.datos()).encode(),
-                      headers={'Authorization': 'Bearer ' + clave, 'Content-Type': 'application/json'})
+                      headers=headers)
         with urlopen(req) as r:
             resultado = json.load(r)
         self.assertEqual(resultado['estado'], 'pendiente')
-        req = Request(url + '/api/solicitudes/' + resultado['id'], headers={'Authorization': 'Bearer ' + clave})
+        req = Request(url + '/api/solicitudes/' + resultado['id'], headers=headers)
         with urlopen(req) as r:
             self.assertEqual(json.load(r)['estado'], 'pendiente')
+        self.assertEqual(self.servicio.listar()[0]['emisor'], 'ana')
+        with urlopen(Request(url+'/api/logout', headers=headers, data=b'{}')):
+            pass
+        with self.assertRaises(HTTPError):
+            urlopen(Request(url+'/api/resumen', headers=headers))
         servidor.detener()
         servidor.iniciar(host='127.0.0.1', puerto=0)
         self.assertNotEqual(clave, servidor.clave)

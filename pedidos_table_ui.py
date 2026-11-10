@@ -16,7 +16,7 @@ class PaginaPedidosTable(QWidget):
         self.sesion, self.turnos = sesion, turnos
         self.al_aceptar, self.boton = al_aceptar, boton
         self.solicitudes = SolicitudesTable(sesion.ruta)
-        self.servidor = ServidorTable(self.solicitudes)
+        self.servidor = ServidorTable(self.solicitudes, sesion.identificar)
         self.setStyleSheet(FORMULARIOS)
         layout = QVBoxLayout(self)
         titulo = QLabel('PedidosTable · Celulares y tablets')
@@ -105,7 +105,7 @@ class PaginaPedidosTable(QWidget):
                 cantidades = Counter((p['nombre'], p['categoria']) for p in productos)
                 detalle = ', '.join(f'{cantidad} × {nombre}' for (nombre, categoria), cantidad in cantidades.items())
                 cliente = self._nombre_cliente(solicitud['cliente_id'])
-                texto = (f"{solicitud['mesa']} · {cliente} · {solicitud['dispositivo']}\n"
+                texto = (f"{solicitud['mesa']} · {cliente} · {solicitud['dispositivo']} · {solicitud['emisor'] or 'Sin usuario registrado'}\n"
                          f"{detalle}\nB/.{sum(round(p['precio'] * 100) for p in productos) / 100:.2f}"
                          f" · {solicitud['fecha']}\n{solicitud['nota']}")
                 item = QListWidgetItem(texto)
