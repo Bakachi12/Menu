@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>DialogCobro</class>
+ <widget class="QDialog" name="DialogCobro">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>350</width>
+    <height>420</height>
+   </rect>
+  </property>
+  <property name="minimumSize">
+   <size>
+    <width>0</width>
+    <height>0</height>
+   </size>
+  </property>
+  <property name="maximumSize">
+   <size>
+    <width>16777215</width>
+    <height>16777215</height>
+   </size>
+  </property>
+  <property name="windowTitle">
+   <string>Confirmar cobro</string>
+  </property>
+  <property name="styleSheet">
+   <string notr="true">QDialog {
+    background-color: #292938;
+    color: white;
+}
+
+QLabel {
+    color: white;
+    font-size: 15px;
+}
+
+QPushButton {
+    background-color: #414154;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 12px;
+}
+
+QPushButton:hover {
+    background-color: #55556A;
+}</string>
+  </property>
+  <widget class="QWidget" name="layoutWidget">
+   <property name="geometry">
+    <rect>
+     <x>12</x>
+     <y>12</y>
+     <width>331</width>
+     <height>391</height>
+    </rect>
+   </property>
+   <layout class="QVBoxLayout" name="verticalLayout">
+    <item>
+     <widget class="QLabel" name="lblTituloCobro">
+      <property name="styleSheet">
+       <string notr="true">color: #FFFFFF;
+font-size: 23px;
+font-weight: bold;</string>
+      </property>
+      <property name="text">
+       <string>Confirmar cobro</string>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QLabel" name="lblMesaCobro">
+      <property name="styleSheet">
+       <string notr="true">color: #C8C8D4;
+font-size: 16px;</string>
+      </property>
+      <property name="text">
+       <string>Mesa 01</string>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QLabel" name="lblClienteCobro">
+      <property name="styleSheet">
+       <string notr="true">color: #C8C8D4;
+font-size: 16px;</string>
+      </property>
+      <property name="text">
+       <string>Cliente: Sin asignar</string>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QLabel" name="lblTotalCobro">
+      <property name="styleSheet">
+       <string notr="true">color: #D4AF37;
+font-size: 25px;
+font-weight: bold;</string>
+      </property>
+      <property name="text">
+       <string>Total: B/.0.00</string>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QPushButton" name="btnConfirmarCobro">
+      <property name="styleSheet">
+       <string notr="true">QPushButton {
+    background-color: #D4AF37;
+    color: #20202B;
+    border-radius: 8px;
+    font-size: 15px;
+    font-weight: bold;
+    padding: 12px;
+}
+
+QPushButton:hover {
+    background-color: #E5C45A;
+}</string>
+      </property>
+      <property name="text">
+       <string>Confirmar</string>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QPushButton" name="btnCancelarCobro">
+      <property name="styleSheet">
+       <string notr="true">QPushButton {
+    background-color: #414154;
+    color: white;
+    border-radius: 8px;
+    font-size: 15px;
+    padding: 12px;
+}
+
+QPushButton:hover {
+    background-color: #55556A;
+}</string>
+      </property>
+      <property name="text">
+       <string>Cancelar</string>
+      </property>
+     </widget>
+    </item>
+   </layout>
+  </widget>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

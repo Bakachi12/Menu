@@ -1,0 +1,676 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MainWindow</class>
+ <widget class="QMainWindow" name="MainWindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1067</width>
+    <height>740</height>
+   </rect>
+  </property>
+  <property name="minimumSize">
+   <size>
+    <width>0</width>
+    <height>0</height>
+   </size>
+  </property>
+  <property name="windowTitle">
+   <string>Restaurante &amp; Bar | Gestión de pedidos</string>
+  </property>
+  <property name="styleSheet">
+   <string notr="true">QMainWindow, QWidget#centralwidget {
+    background-color: #0B1020;
+    color: #F4F2ED;
+}</string>
+  </property>
+  <widget class="QWidget" name="centralwidget">
+   <layout class="QVBoxLayout" name="verticalLayout_2">
+    <item>
+     <layout class="QHBoxLayout" name="horizontalLayout">
+      <item>
+       <widget class="QFrame" name="PanelLateral">
+        <property name="minimumSize">
+         <size>
+          <width>180</width>
+          <height>0</height>
+         </size>
+        </property>
+        <property name="maximumSize">
+         <size>
+          <width>220</width>
+          <height>16777215</height>
+         </size>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">
+QFrame#PanelLateral {
+    background-color: #0E1422;
+    border: 1px solid #202A3A;
+    border-radius: 12px;
+}
+
+QPushButton {
+    background-color: #171F30;
+    color: #E8E7E2;
+    border: 1px solid #202B3E;
+    border-radius: 10px;
+    padding: 13px 14px;
+    text-align: left;
+    font-size: 15px;
+}
+
+QPushButton:hover {
+    background-color: #263248;
+    color: #F2C66D;
+    border: 1px solid #D6A74C;
+}
+
+QPushButton:pressed {
+    background-color: #D6A74C;
+    color: #111827;
+}
+</string>
+        </property>
+        <property name="frameShape">
+         <enum>QFrame::Shape::StyledPanel</enum>
+        </property>
+        <property name="frameShadow">
+         <enum>QFrame::Shadow::Raised</enum>
+        </property>
+        <widget class="QWidget" name="layoutWidget">
+         <property name="geometry">
+          <rect>
+           <x>2</x>
+           <y>40</y>
+           <width>171</width>
+           <height>561</height>
+          </rect>
+         </property>
+         <layout class="QVBoxLayout" name="verticalLayout">
+          <property name="spacing">
+           <number>8</number>
+          </property>
+          <property name="leftMargin">
+           <number>12</number>
+          </property>
+          <property name="topMargin">
+           <number>20</number>
+          </property>
+          <property name="rightMargin">
+           <number>12</number>
+          </property>
+          <item>
+           <widget class="QPushButton" name="pushButton">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="text">
+             <string>Inicio</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="btnMenuMesas">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="text">
+             <string>Mesas</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="pushButton_3">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="styleSheet">
+             <string notr="true">
+QPushButton {
+    background-color: #414154;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 12px;
+    font-size: 14px;
+}
+
+QPushButton:hover {
+    background-color: #D4AF37;
+    color: black;
+}
+</string>
+            </property>
+            <property name="text">
+             <string>Clientes</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="btnMenuHistorial">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="text">
+             <string>Historial</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="btnMenuConfiguracion">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="text">
+             <string>Configuracion</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <spacer name="verticalSpacer">
+            <property name="orientation">
+             <enum>Qt::Orientation::Vertical</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>20</width>
+              <height>40</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+         </layout>
+        </widget>
+       </widget>
+      </item>
+      <item>
+       <widget class="QFrame" name="PanelPrincipal">
+        <property name="styleSheet">
+         <string notr="true">
+QFrame#PanelPrincipal {
+    background-color: #101725;
+    border: 1px solid #202A3A;
+    border-radius: 12px;
+}
+</string>
+        </property>
+        <property name="frameShape">
+         <enum>QFrame::Shape::StyledPanel</enum>
+        </property>
+        <property name="frameShadow">
+         <enum>QFrame::Shadow::Raised</enum>
+        </property>
+        <layout class="QVBoxLayout" name="verticalLayout_3">
+         <item>
+          <widget class="QLabel" name="label">
+           <property name="styleSheet">
+            <string notr="true">
+QLabel {
+    color: #FFFFFF;
+    font-size: 24px;
+    font-weight: bold;
+    background: transparent;
+}
+</string>
+           </property>
+           <property name="text">
+            <string>Gestion de pedidos</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <layout class="QHBoxLayout" name="horizontalLayout_3">
+           <item>
+            <widget class="QPushButton" name="btnTodas">
+             <property name="styleSheet">
+              <string notr="true">
+QPushButton {
+    background-color: #414154;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 12px;
+    font-size: 14px;
+}
+
+QPushButton:hover {
+    background-color: #D4AF37;
+    color: black;
+}
+</string>
+             </property>
+             <property name="text">
+              <string>Todas</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="btnDisponibles">
+             <property name="styleSheet">
+              <string notr="true">
+QPushButton {
+    background-color: #414154;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 12px;
+    font-size: 14px;
+}
+
+QPushButton:hover {
+    background-color: #D4AF37;
+    color: black;
+}
+</string>
+             </property>
+             <property name="text">
+              <string>Disponibles</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="btnOcupadas">
+             <property name="styleSheet">
+              <string notr="true">
+QPushButton {
+    background-color: #414154;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 12px;
+    font-size: 14px;
+}
+
+QPushButton:hover {
+    background-color: #D4AF37;
+    color: black;
+}
+</string>
+             </property>
+             <property name="text">
+              <string>	Ocupadas</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </item>
+         <item>
+          <widget class="QStackedWidget" name="PaginasPrincipal">
+           <widget class="QWidget" name="PaginaMesas">
+            <layout class="QVBoxLayout" name="verticalLayout_4">
+             <item>
+              <widget class="QScrollArea" name="AreaMesas">
+               <property name="widgetResizable">
+                <bool>true</bool>
+               </property>
+               <widget class="QWidget" name="scrollAreaWidgetContents">
+                <property name="geometry">
+                 <rect>
+                  <x>0</x>
+                  <y>0</y>
+                  <width>819</width>
+                  <height>535</height>
+                 </rect>
+                </property>
+               </widget>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+           <widget class="QWidget" name="PaginaCobro">
+            <widget class="QWidget" name="ContenedorCobro" native="true">
+             <property name="geometry">
+              <rect>
+               <x>150</x>
+               <y>90</y>
+               <width>351</width>
+               <height>211</height>
+              </rect>
+             </property>
+            </widget>
+           </widget>
+           <widget class="QWidget" name="PaginaHistorial">
+            <widget class="QTableWidget" name="tablaHistorial">
+             <property name="geometry">
+              <rect>
+               <x>10</x>
+               <y>100</y>
+               <width>621</width>
+               <height>401</height>
+              </rect>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">QTableWidget {
+    background-color: #292938;
+    alternate-background-color: #343446;
+    color: white;
+    border: none;
+    gridline-color: #414154;
+    font-size: 14px;
+    selection-background-color: #D4AF37;
+    selection-color: #20202B;
+}
+
+QHeaderView::section {
+    background-color: #414154;
+    color: #D4AF37;
+    padding: 10px;
+    border: none;
+    font-weight: bold;
+}
+
+QTableWidget::item {
+    padding: 8px;
+}</string>
+             </property>
+             <property name="editTriggers">
+              <set>QAbstractItemView::EditTrigger::NoEditTriggers</set>
+             </property>
+             <property name="alternatingRowColors">
+              <bool>true</bool>
+             </property>
+             <property name="selectionBehavior">
+              <enum>QAbstractItemView::SelectionBehavior::SelectRows</enum>
+             </property>
+             <property name="columnCount">
+              <number>10</number>
+             </property>
+             <column>
+              <property name="text">
+               <string>	N.º Venta</string>
+              </property>
+             </column>
+             <column>
+              <property name="text">
+               <string>Fecha y hora</string>
+              </property>
+             </column>
+             <column>
+              <property name="text">
+               <string>	Cliente</string>
+              </property>
+             </column>
+             <column>
+              <property name="text">
+               <string>	Mesa</string>
+              </property>
+             </column>
+             <column>
+              <property name="text">
+               <string>	Total</string>
+              </property>
+             </column>
+             <column/>
+             <column/>
+             <column/>
+             <column/>
+             <column/>
+            </widget>
+            <widget class="QLineEdit" name="txtBuscarHistorial">
+             <property name="geometry">
+              <rect>
+               <x>10</x>
+               <y>0</y>
+               <width>261</width>
+               <height>31</height>
+              </rect>
+             </property>
+             <property name="minimumSize">
+              <size>
+               <width>50</width>
+               <height>0</height>
+              </size>
+             </property>
+             <property name="maximumSize">
+              <size>
+               <width>16777215</width>
+               <height>50</height>
+              </size>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">QLineEdit {
+    background-color: #414154;
+    color: white;
+    border: 1px solid #55556A;
+    border-radius: 8px;
+    padding: 10px;
+    font-size: 15px;
+}
+
+QLineEdit:focus {
+    border: 2px solid #D4AF37;
+}</string>
+             </property>
+             <property name="placeholderText">
+              <string>Buscar cliente, mesa o número de venta...</string>
+             </property>
+            </widget>
+            <widget class="QWidget" name="layoutWidget">
+             <property name="geometry">
+              <rect>
+               <x>30</x>
+               <y>50</y>
+               <width>356</width>
+               <height>47</height>
+              </rect>
+             </property>
+             <layout class="QHBoxLayout" name="horizontalLayout_2">
+              <item>
+               <widget class="QComboBox" name="cmbMesHistorial">
+                <property name="minimumSize">
+                 <size>
+                  <width>0</width>
+                  <height>45</height>
+                 </size>
+                </property>
+                <property name="cursor">
+                 <cursorShape>PointingHandCursor</cursorShape>
+                </property>
+                <property name="styleSheet">
+                 <string notr="true">QComboBox {
+    background-color: #414154;
+    color: #FFFFFF;
+    border: 1px solid #55556A;
+    border-radius: 9px;
+    padding: 8px 10px;
+    font-size: 14px;
+}
+QComboBox:hover {
+    border-color: #D4AF37;
+}
+QComboBox::drop-down {
+    width: 0px;
+    border: none;
+}
+QComboBox::down-arrow {
+    image: none;
+    width: 0px;
+    height: 0px;
+}
+QComboBox QAbstractItemView {
+    background-color: #292938;
+    color: white;
+    selection-background-color: #D4AF37;
+    selection-color: #20202B;
+}</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QComboBox" name="cmbAnioHistorial">
+                <property name="minimumSize">
+                 <size>
+                  <width>110</width>
+                  <height>45</height>
+                 </size>
+                </property>
+                <property name="styleSheet">
+                 <string notr="true">QComboBox {
+    background-color: #414154;
+    color: #FFFFFF;
+    border: 1px solid #55556A;
+    border-radius: 9px;
+    padding: 8px 10px;
+    font-size: 14px;
+}
+QComboBox:hover { border-color: #D4AF37; }
+QComboBox::drop-down { width: 0px; border: none; }
+QComboBox::down-arrow { image: none; width: 0px; height: 0px; }
+QComboBox QAbstractItemView {
+    background-color: #292938;
+    color: white;
+    selection-background-color: #D4AF37;
+    selection-color: #20202B;
+}</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="btnHistorialHoy">
+                <property name="minimumSize">
+                 <size>
+                  <width>0</width>
+                  <height>45</height>
+                 </size>
+                </property>
+                <property name="cursor">
+                 <cursorShape>PointingHandCursor</cursorShape>
+                </property>
+                <property name="styleSheet">
+                 <string notr="true">QPushButton {
+    background-color: #414154;
+    color: #FFFFFF;
+    border: 1px solid #55556A;
+    border-radius: 9px;
+    padding: 10px 18px;
+    font-size: 15px;
+    font-weight: bold;
+}
+
+QPushButton:hover {
+    background-color: #55556A;
+    border: 1px solid #D4AF37;
+}
+
+QPushButton:pressed {
+    background-color: #D4AF37;
+    color: #20202B;
+}
+
+QPushButton:checked {
+    background-color: #D4AF37;
+    color: #20202B;
+    border: 1px solid #E5C45A;
+}</string>
+                </property>
+                <property name="text">
+                 <string>Hoy</string>
+                </property>
+                <property name="checkable">
+                 <bool>true</bool>
+                </property>
+                <property name="autoExclusive">
+                 <bool>true</bool>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="btnHistorialSemana">
+                <property name="minimumSize">
+                 <size>
+                  <width>0</width>
+                  <height>45</height>
+                 </size>
+                </property>
+                <property name="cursor">
+                 <cursorShape>PointingHandCursor</cursorShape>
+                </property>
+                <property name="styleSheet">
+                 <string notr="true">QPushButton {
+    background-color: #414154;
+    color: #FFFFFF;
+    border: 1px solid #55556A;
+    border-radius: 9px;
+    padding: 10px 18px;
+    font-size: 15px;
+    font-weight: bold;
+}
+
+QPushButton:hover {
+    background-color: #55556A;
+    border: 1px solid #D4AF37;
+}
+
+QPushButton:pressed {
+    background-color: #D4AF37;
+    color: #20202B;
+}
+
+QPushButton:checked {
+    background-color: #D4AF37;
+    color: #20202B;
+    border: 1px solid #E5C45A;
+}</string>
+                </property>
+                <property name="text">
+                 <string>Semana</string>
+                </property>
+                <property name="checkable">
+                 <bool>true</bool>
+                </property>
+                <property name="autoExclusive">
+                 <bool>true</bool>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </widget>
+           </widget>
+           <widget class="QWidget" name="PaginaPedido">
+            <property name="styleSheet">
+             <string notr="true">QWidget#PaginaPedido {
+    background-color: #292938;
+}</string>
+            </property>
+           </widget>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+      </item>
+     </layout>
+    </item>
+   </layout>
+  </widget>
+  <widget class="QMenuBar" name="menubar">
+   <property name="geometry">
+    <rect>
+     <x>0</x>
+     <y>0</y>
+     <width>1067</width>
+     <height>33</height>
+    </rect>
+   </property>
+  </widget>
+  <widget class="QStatusBar" name="statusbar"/>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
