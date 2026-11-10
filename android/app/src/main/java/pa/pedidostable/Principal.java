@@ -84,22 +84,23 @@ public class Principal extends Activity {
     private void abrir(String url) {
         LinearLayout layout = pantalla();
         destino = url;
-        Button ajustes = new Button(this);
-        ajustes.setText("Conexión con la caja");
-        ajustes.setOnClickListener(v -> new AlertDialog.Builder(this)
-            .setMessage("¿Volver a la vinculación? Se cerrará la pantalla de pedidos.")
-            .setNegativeButton("Continuar con el pedido", null)
-            .setPositiveButton("Volver", (d, i) -> configurar()).show());
-        layout.addView(ajustes);
         navegador = new WebView(this);
         layout.addView(navegador, new LinearLayout.LayoutParams(-1, 0, 1));
         WebSettings opciones = navegador.getSettings();
+        opciones.setUserAgentString(opciones.getUserAgentString() + " PedidosTableAndroid");
         opciones.setJavaScriptEnabled(true);
         opciones.setDomStorageEnabled(true);
         opciones.setAllowFileAccess(false);
         opciones.setAllowContentAccess(false);
         navegador.setWebViewClient(new WebViewClient() {
             @Override public boolean shouldOverrideUrlLoading(WebView vista, WebResourceRequest req) {
+                if ("pedidostable://conexion".equals(req.getUrl().toString()) && req.isForMainFrame() && req.hasGesture()) {
+                    new AlertDialog.Builder(Principal.this)
+                        .setMessage("¿Cambiar la conexión con la caja?")
+                        .setNegativeButton("Cancelar", null)
+                        .setPositiveButton("Continuar", (dialogo, opcion) -> configurar()).show();
+                    return true;
+                }
                 return !permitido(req.getUrl());
             }
             @Override public WebResourceResponse shouldInterceptRequest(WebView vista, WebResourceRequest req) {

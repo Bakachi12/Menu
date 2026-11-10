@@ -170,7 +170,7 @@ class TestPedidosTable(unittest.TestCase):
         with self.assertRaises(HTTPError) as error:
             urlopen(url + '/api/resumen')
         self.assertEqual(error.exception.code, 401)
-        clave = servidor.clave
+        clave = self.servicio.vincular('Terraza')
         headers = {'Authorization': 'Bearer ' + clave, 'Content-Type': 'application/json'}
         with self.assertRaises(HTTPError):
             urlopen(Request(url + '/api/resumen', headers=headers))
@@ -195,8 +195,16 @@ class TestPedidosTable(unittest.TestCase):
         with self.assertRaises(HTTPError):
             urlopen(Request(url+'/api/resumen', headers=headers))
         servidor.detener()
-        servidor.iniciar(host='127.0.0.1', puerto=0)
-        self.assertNotEqual(clave, servidor.clave)
+        url = f"http://127.0.0.1:{servidor.iniciar(host='127.0.0.1', puerto=0)}"
+        with login('prueba') as respuesta:
+            headers['X-Sesion'] = json.load(respuesta)['token']
+        with urlopen(Request(url+'/api/cuentas', headers=headers)) as respuesta:
+            self.assertNotIn('productos', json.load(respuesta))
+        otra = self.servicio.vincular('')
+        self.servicio.revocar(self.servicio.terminal(clave)[0])
+        self.assertIsNotNone(self.servicio.terminal(otra))
+        with self.assertRaises(HTTPError):
+            urlopen(Request(url+'/api/cuentas', headers=headers))
 
 
 if __name__ == '__main__':

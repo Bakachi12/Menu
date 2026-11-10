@@ -5,7 +5,7 @@ import socket
 import sqlite3
 from PySide6.QtCore import QTimer, Qt
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-                               QPushButton, QLineEdit, QListWidget, QListWidgetItem)
+                               QPushButton, QLineEdit, QComboBox, QMessageBox, QListWidget, QListWidgetItem)
 from pedidos_table import SolicitudesTable, ServidorTable
 from estilos import FORMULARIOS
 
@@ -19,14 +19,23 @@ class PaginaPedidosTable(QWidget):
         self.servidor = ServidorTable(self.solicitudes, sesion.identificar)
         self.setStyleSheet(FORMULARIOS)
         layout = QVBoxLayout(self)
-        titulo = QLabel('PedidosTable · Celulares y tablets')
+        titulo = QLabel('Pedidos pendientes')
         titulo.setStyleSheet('color: #F2C66D; font-size: 24px;')
         layout.addWidget(titulo)
+        self.configurar = QPushButton('Configuración')
+        self.configurar.setCheckable(True)
+        layout.addWidget(self.configurar)
+        self.panel = QWidget()
+        opciones = QVBoxLayout(self.panel)
+        layout.addWidget(self.panel)
+        self.panel.hide()
+        self.configurar.toggled.connect(self.panel.setVisible)
+        self.clave_nueva = ''
         self.ayuda = QLabel('Conecta los dispositivos del personal al mismo Wi-Fi de esta PC. '
                             'Cada solicitud necesita la aprobación de un cajero con turno activo. '
                             'Las notas se muestran aquí para que el cajero las atienda.')
         self.ayuda.setWordWrap(True)
-        layout.addWidget(self.ayuda)
+        opciones.addWidget(self.ayuda)
         self.ip = QLineEdit()
         self.ip.setPlaceholderText('IP local de esta PC, ejemplo: 192.168.1.20')
         try:
@@ -34,16 +43,28 @@ class PaginaPedidosTable(QWidget):
             self.ip.setText(next((ip for ip in direcciones if not ip.startswith('127.')), ''))
         except OSError:
             pass
-        layout.addWidget(self.ip)
+        opciones.addWidget(self.ip)
         self.activar = QPushButton('Activar conexión móvil')
         self.activar.setMinimumHeight(54)
         self.activar.clicked.connect(self.cambiar_servidor)
-        layout.addWidget(self.activar)
+        opciones.addWidget(self.activar)
         self.enlace = QLineEdit()
         self.enlace.setReadOnly(True)
         self.enlace.setPlaceholderText('Admin activa la conexión para obtener el enlace.')
-        layout.addWidget(self.enlace)
+        opciones.addWidget(self.enlace)
         self.ip.textChanged.connect(self.actualizar_enlace)
+        self.nombre = QLineEdit()
+        self.nombre.setPlaceholderText('Nombre opcional, por ejemplo Tablet terraza')
+        opciones.addWidget(self.nombre)
+        crear = QPushButton('Generar enlace para un dispositivo')
+        crear.clicked.connect(self.generar)
+        opciones.addWidget(crear)
+        self.terminales = QComboBox()
+        opciones.addWidget(self.terminales)
+        revocar = QPushButton('Retirar acceso al dispositivo seleccionado')
+        revocar.clicked.connect(self.revocar)
+        opciones.addWidget(revocar)
+        self.cargar_terminales()
         self.lista = QListWidget()
         self.lista.setWordWrap(True)
         self.lista.setSpacing(10)
@@ -64,9 +85,36 @@ class PaginaPedidosTable(QWidget):
         self.temporizador.timeout.connect(self.actualizar)
         self.temporizador.start()
 
+    def cargar_terminales(self):
+        self.terminales.clear()
+        for identificador, nombre in self.solicitudes.terminales():
+            self.terminales.addItem(f'{nombre} (#{identificador})', identificador)
+
+    def generar(self):
+        self.sesion.exigir_admin()
+        if not self.servidor.http:
+            self.mensaje.setText('Activa primero la conexión móvil.')
+            return
+        self.clave_nueva = self.solicitudes.vincular(self.nombre.text())
+        self.nombre.clear()
+        self.actualizar_enlace()
+        self.cargar_terminales()
+
+    def revocar(self):
+        self.sesion.exigir_admin()
+        identificador = self.terminales.currentData()
+        if identificador is None:
+            return
+        if QMessageBox.question(self, 'Retirar acceso', self.terminales.currentText() + ' perderá acceso. ¿Continuar?') != QMessageBox.StandardButton.Yes:
+            return
+        self.solicitudes.revocar(identificador)
+        self.clave_nueva = ''
+        self.actualizar_enlace()
+        self.cargar_terminales()
+
     def actualizar_enlace(self):
-        if self.servidor.http:
-            self.enlace.setText(f'http://{self.ip.text().strip()}:{self.servidor.http.server_port}/#{self.servidor.clave}')
+        if self.servidor.http and self.clave_nueva:
+            self.enlace.setText(f'http://{self.ip.text().strip()}:{self.servidor.http.server_port}/#{self.clave_nueva}')
         else:
             self.enlace.clear()
 
@@ -81,14 +129,15 @@ class PaginaPedidosTable(QWidget):
                 self.activar.setText('Desactivar conexión móvil')
             self.actualizar_enlace()
             self.mensaje.setText('Comparte el enlace solo con el personal. Usa una red privada de confianza; '
-                                 'no abras el puerto al Internet. Al reactivar cambia la clave.')
+                                 'no abras el puerto al Internet. Los dispositivos vinculados conservan su acceso.')
         except (PermissionError, OSError) as e:
             self.mensaje.setText(f'No se pudo cambiar la conexión: {e}')
 
     def actualizar(self):
         admin = self.sesion.es_admin()
-        for control in (self.ip, self.activar, self.enlace):
-            control.setVisible(admin)
+        self.configurar.setVisible(admin)
+        if not admin:
+            self.configurar.setChecked(False)
         if not self.sesion.usuario:
             self.lista.clear()
             return

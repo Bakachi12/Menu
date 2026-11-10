@@ -104,6 +104,6 @@ Para cerrar, se escribe la contraseña de Admin en la sección Cierre de turno, 
 
 ## Conectar la app de Android con la caja de Windows
 
-En la PC, entra como Admin y abre **PedidosTable → Activar conexión móvil**. Copia el enlace completo. En el celular, conectado al Wi-Fi del negocio, abre **PedidosTable**, pega el enlace en **Vincular con la caja** y toca **Guardar y conectar**. Inicia sesión con tu cuenta del TPV.
+En la PC, entra como Admin y abre **PedidosTable → Configuración → Activar conexión móvil**. Pulsa **Generar enlace para un dispositivo** y copia el enlace completo. En el celular, conectado al Wi-Fi del negocio, abre **PedidosTable**, pega el enlace en **Vincular con la caja** y toca **Guardar y conectar**. Inicia sesión con tu cuenta del TPV.
 
 Sigue la [guía de conexión de Windows y Android](PEDIDOS_TABLE.md) para instalar el APK, encontrar la IP de la PC, comprobar la conexión con un pedido y volver a vincular el equipo si cambia la clave.

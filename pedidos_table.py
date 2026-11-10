@@ -10,7 +10,7 @@ from pathlib import Path
 from threading import Thread, Lock
 from time import monotonic
 from urllib.parse import urlsplit
-import hmac
+import hashlib
 import json
 import secrets
 import sqlite3
@@ -28,6 +28,9 @@ class SolicitudesTable:
                 responsable_id INTEGER, resuelta TEXT
             )''')
 
+            db.execute("""CREATE TABLE IF NOT EXISTS terminales_table (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, nombre TEXT NOT NULL, huella TEXT NOT NULL UNIQUE
+            )""")
             columnas = {r[1] for r in db.execute('PRAGMA table_info(solicitudes_table)')}
             for campo, tipo in [('emisor_id', 'INTEGER'), ('emisor', 'TEXT')]:
                 if campo not in columnas:
@@ -43,10 +46,34 @@ class SolicitudesTable:
         finally:
             db.close()
 
-    def resumen(self):
+    def vincular(self, nombre):
+        clave = secrets.token_urlsafe(32)
+        with self.conexion() as db:
+            cursor = db.execute("INSERT INTO terminales_table(nombre, huella) VALUES (?, ?)",
+                                (nombre.strip()[:60], hashlib.sha256(clave.encode()).hexdigest()))
+            identificador = cursor.lastrowid
+            if not nombre.strip():
+                db.execute("UPDATE terminales_table SET nombre=? WHERE id=?",
+                           (f"Terminal {identificador}", identificador))
+        return clave
+
+    def terminales(self):
+        with self.conexion() as db:
+            return db.execute("SELECT id, nombre FROM terminales_table ORDER BY id").fetchall()
+
+    def revocar(self, identificador):
+        with self.conexion() as db:
+            db.execute("DELETE FROM terminales_table WHERE id=?", (identificador,))
+
+    def terminal(self, clave):
+        with self.conexion() as db:
+            return db.execute("SELECT id,nombre FROM terminales_table WHERE huella=?",
+                              (hashlib.sha256(clave.encode()).hexdigest(),)).fetchone()
+
+    def resumen(self, incluir_catalogo=True):
         with self.conexion() as db:
             productos = [dict(r) for r in db.execute('''SELECT id, nombre,
-                precio_centimos, categoria FROM productos WHERE activo = 1 ORDER BY id''')]
+                precio_centimos, categoria FROM productos WHERE activo = 1 ORDER BY id''')] if incluir_catalogo else []
             mesas = []
             for (nombre,) in db.execute('SELECT nombre FROM mesas_configuracion ORDER BY id'):
                 fila = db.execute('SELECT productos FROM pedidos_abiertos WHERE mesa = ?', (nombre,)).fetchone()
@@ -54,7 +81,7 @@ class SolicitudesTable:
                 clientes = [dict(c) for c in db.execute('SELECT id, nombre FROM clientes WHERE mesa = ?', (nombre,))]
                 mesas.append(dict(nombre=nombre, clientes=clientes, cuenta=cuenta,
                                   total_centimos=sum(round(p['precio'] * 100) for p in cuenta)))
-        return dict(productos=productos, mesas=mesas)
+        return dict(productos=productos, mesas=mesas) if incluir_catalogo else dict(mesas=mesas)
 
     @staticmethod
     def validar_destino(db, mesa, cliente_id):
@@ -74,7 +101,7 @@ class SolicitudesTable:
             raise ValueError('Identificador de solicitud inválido.') from None
         mesa, cliente = datos.get('mesa'), datos.get('cliente_id')
         dispositivo, nota, lineas = datos.get('dispositivo', ''), datos.get('nota', ''), datos.get('lineas')
-        if not isinstance(dispositivo, str) or not 1 <= len(dispositivo.strip()) <= 60:
+        if not isinstance(dispositivo, str) or len(dispositivo.strip()) > 60:
             raise ValueError('Escribe el nombre de este dispositivo (máximo 60 caracteres).')
         if not isinstance(nota, str) or len(nota) > 300:
             raise ValueError('La nota admite hasta 300 caracteres.')
@@ -154,13 +181,11 @@ class ServidorTable:
         self.identificar = identificar
         self.solicitudes = solicitudes
         self.http = None
-        self.clave = ''
 
     def iniciar(self, host='0.0.0.0', puerto=8765):
         if self.http:
             return self.http.server_port
-        self.clave = secrets.token_urlsafe(24)
-        servicio, clave = self.solicitudes, self.clave
+        servicio = self.solicitudes
         pagina = Path(__file__).with_name('pedidos_table.html').read_bytes()
 
         sesiones = {}
@@ -190,15 +215,17 @@ class ServidorTable:
             def autorizado(self):
                 token = self.headers.get('X-Sesion', '')
                 with bloqueo:
-                    cuenta, caduca = sesiones.get(token, (None, 0))
+                    cuenta, caduca, terminal_id = sesiones.get(token, (None, 0, None))
                     if caduca <= monotonic():
                         sesiones.pop(token, None)
                         return False
                     self.empleado = cuenta
-                return self.enlace_valido()
+                return self.enlace_valido() and self.terminal[0] == terminal_id
 
             def enlace_valido(self):
-                return hmac.compare_digest(self.headers.get('Authorization', '').encode('utf-8'), ('Bearer ' + clave).encode('utf-8'))
+                esquema, _, clave = self.headers.get('Authorization', '').partition(' ')
+                self.terminal = servicio.terminal(clave) if esquema == 'Bearer' and clave else None
+                return self.terminal is not None
 
             def do_GET(self):
                 ruta = urlsplit(self.path).path
@@ -207,6 +234,8 @@ class ServidorTable:
                 if not self.autorizado():
                     return self.responder(401, dict(error='Clave incorrecta o conexión reiniciada.'))
                 try:
+                    if ruta == '/api/cuentas':
+                        return self.responder(200, servicio.resumen(False))
                     if ruta == '/api/resumen':
                         return self.responder(200, servicio.resumen())
                     if ruta.startswith('/api/solicitudes/'):
@@ -254,8 +283,10 @@ class ServidorTable:
                             return self.responder(401, dict(error='Usuario o contraseña incorrectos.'))
                         token = secrets.token_urlsafe(32)
                         with bloqueo:
-                            sesiones[token] = empleado, monotonic() + 8 * 3600
+                            sesiones[token] = empleado, monotonic() + 8 * 3600, self.terminal[0]
                         return self.responder(200, dict(token=token, usuario=empleado['usuario']))
+                    if isinstance(datos, dict):
+                        datos['dispositivo'] = self.terminal[1]
                     self.responder(200, servicio.enviar(datos, self.empleado))
                 except (ValueError, UnicodeDecodeError) as e:
                     self.responder(400, dict(error=str(e)))
@@ -271,4 +302,3 @@ class ServidorTable:
             self.http.shutdown()
             self.http.server_close()
             self.http = None
-        self.clave = ''
