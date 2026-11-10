@@ -102,10 +102,8 @@ Para cerrar, se escribe la contraseña de Admin en la sección Cierre de turno, 
 
 
 
-## Terminal móvil PedidosTable
+## Conectar la app de Android con la caja de Windows
 
-La opción PedidosTable conecta celulares y tablets del personal a la PC por la
-red local. `pedidos_table.py` implementa el servicio y las solicitudes persistentes;
-`pedidos_table_ui.py` integra activación y aprobación en el TPV;
-`pedidos_table.html` contiene la interfaz móvil. Consulta [PEDIDOS_TABLE.md](PEDIDOS_TABLE.md)
-para iniciar la conexión, comprobar el firewall y recompilar el ejecutable.
+En la PC, entra como Admin y abre **PedidosTable → Activar conexión móvil**. Copia el enlace completo. En el celular, conectado al Wi-Fi del negocio, abre **PedidosTable**, pega el enlace en **Vincular con la caja** y toca **Guardar y conectar**. Inicia sesión con tu cuenta del TPV.
+
+Sigue la [guía de conexión de Windows y Android](PEDIDOS_TABLE.md) para instalar el APK, encontrar la IP de la PC, comprobar la conexión con un pedido y volver a vincular el equipo si cambia la clave.
