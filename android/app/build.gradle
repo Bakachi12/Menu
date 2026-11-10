@@ -1,0 +1,13 @@
+plugins { id 'com.android.application' version '8.7.3' }
+
+android {
+    namespace 'pa.pedidostable'
+    compileSdk 35
+    defaultConfig {
+        applicationId 'pa.pedidostable'
+        minSdk 26
+        targetSdk 34
+        versionCode 1
+        versionName '0.1'
+    }
+}
