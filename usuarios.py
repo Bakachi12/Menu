@@ -4,26 +4,14 @@ import hashlib
 import hmac
 import secrets
 import sqlite3
+import time
 import unicodedata
 
 from PySide6.QtCore import Qt, QEvent, QEventLoop, QTimer, QDateTime, QLocale
 from PySide6.QtGui import QColor
 from pantalla_espera import FondoEspera
-from PySide6.QtWidgets import (
-    QApplication, QSizePolicy, QGraphicsDropShadowEffect, QDialog, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QListWidget,
-    QPushButton, QVBoxLayout, QWidget,
-)
-
-ESTILO = """
-QDialog, QWidget#Usuarios { background: #0B1020; color: #F4F2ED; }
-QLabel { color: #DCE4F0; background: transparent; font-size: 15px; }
-QLineEdit, QListWidget { background: #172235; color: #F4F2ED;
-    border: 1px solid #34445E; border-radius: 8px; padding: 10px; font-size: 16px; }
-QPushButton { background: #D6AE62; color: #101725; border: none;
-    border-radius: 8px; padding: 14px; font-size: 16px; font-weight: 600; }
-QPushButton:hover { background: #F2C66D; }
-QPushButton:disabled { background: #34445E; color: #A8B4C8; }
-"""
+from estilos import FORMULARIOS as ESTILO
+from PySide6.QtWidgets import QApplication, QSizePolicy, QGraphicsDropShadowEffect, QDialog, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QListWidget, QPushButton, QVBoxLayout, QWidget
 
 
 class SesionUsuarios:
@@ -32,17 +20,23 @@ class SesionUsuarios:
     def __init__(self, ruta):
         self.ruta = str(ruta)
         self.usuario = None
+        self._autorizaciones_cierre = {}
         with self.conexion() as db:
             db.execute('BEGIN IMMEDIATE')
             db.execute('''CREATE TABLE IF NOT EXISTS usuarios (
                 id INTEGER PRIMARY KEY, nombre TEXT NOT NULL,
+                usuario TEXT,
                 clave_nombre TEXT NOT NULL UNIQUE,
                 sal BLOB NOT NULL, resumen BLOB NOT NULL,
                 iteraciones INTEGER NOT NULL,
                 rol TEXT NOT NULL CHECK(rol IN ('admin', 'mesas'))
             )''')
+            columnas = {fila[1] for fila in db.execute("PRAGMA table_info(usuarios)")}
+            if "usuario" not in columnas:
+                db.execute("ALTER TABLE usuarios ADD COLUMN usuario TEXT")
+            db.execute("UPDATE usuarios SET usuario = nombre WHERE usuario IS NULL")
             if db.execute('SELECT COUNT(*) FROM usuarios').fetchone()[0] == 0:
-                self._insertar(db, 'Admin', 'Admin', 'admin')
+                self._insertar(db, 'Admin', 'Admin', 'Admin', 'admin')
 
     @contextmanager
     def conexion(self):
@@ -57,29 +51,89 @@ class SesionUsuarios:
     def clave(nombre):
         return unicodedata.normalize('NFKC', nombre).strip().casefold()
 
-    def _insertar(self, db, nombre, password, rol):
+    def _insertar(self, db, nombre, usuario, password, rol):
         sal = secrets.token_bytes(16)
         resumen = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), sal, self.ITERACIONES)
         db.execute('''INSERT INTO usuarios
-            (nombre, clave_nombre, sal, resumen, iteraciones, rol)
-            VALUES (?, ?, ?, ?, ?, ?)''',
-            (nombre.strip(), self.clave(nombre), sal, resumen, self.ITERACIONES, rol))
+            (nombre, usuario, clave_nombre, sal, resumen, iteraciones, rol)
+            VALUES (?, ?, ?, ?, ?, ?, ?)''',
+            (nombre.strip(), usuario.strip(), self.clave(usuario), sal, resumen,
+             self.ITERACIONES, rol))
 
-    def iniciar(self, nombre, password):
+    def iniciar(self, usuario, password):
         self.usuario = None
+        self._autorizaciones_cierre.clear()
         with self.conexion() as db:
-            fila = db.execute('''SELECT id, nombre, rol, sal, resumen, iteraciones
-                FROM usuarios WHERE clave_nombre = ?''', (self.clave(nombre),)).fetchone()
+            fila = db.execute('''SELECT id, nombre, usuario, rol, sal, resumen, iteraciones
+                FROM usuarios WHERE clave_nombre = ?''', (self.clave(usuario),)).fetchone()
         # También calcular para nombres desconocidos, sin indicar qué dato falló.
-        sal, esperado, vueltas = fila[3:] if fila else (b'\0' * 16, b'\0' * 32, self.ITERACIONES)
+        sal, esperado, vueltas = fila[4:] if fila else (b'\0' * 16, b'\0' * 32, self.ITERACIONES)
         obtenido = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), sal, vueltas)
         if fila and hmac.compare_digest(obtenido, esperado):
-            self.usuario = dict(id=fila[0], nombre=fila[1], rol=fila[2])
+            self.usuario = dict(id=fila[0], nombre=fila[1], usuario=fila[2], rol=fila[3])
             return True
         return False
 
+    def validar_admin(self, password):
+        """Comprueba una contraseña de Admin sin cambiar la sesión actual."""
+        return self.identificar_admin(password) is not None
+
+    def identificar_admin(self, password):
+        """Devuelve el ID del Admin que validó la contraseña, sin cambiar la sesión."""
+        with self.conexion() as db:
+            filas = db.execute(
+                "SELECT id, sal, resumen, iteraciones FROM usuarios WHERE rol = 'admin'"
+            ).fetchall()
+        administrador_id = None
+        for identificador, sal, esperado, vueltas in filas:
+            obtenido = hashlib.pbkdf2_hmac(
+                'sha256', password.encode('utf-8'), sal, vueltas
+            )
+            if hmac.compare_digest(obtenido, esperado):
+                administrador_id = identificador
+        return administrador_id
+
+    def autorizar_asignacion_tras_cierre(self, password, turno_id):
+        """Autoriza una asignación manual única tras cerrar el turno indicado."""
+        self._autorizaciones_cierre.pop(turno_id, None)
+        if not self.usuario:
+            return False
+        administrador_id = self.identificar_admin(password)
+        if administrador_id is None:
+            return False
+        self._autorizaciones_cierre[turno_id] = (
+            self.usuario['id'], time.monotonic() + 1800, administrador_id
+        )
+        return True
+
+    def responsable_asignacion_tras_cierre(self, turno_id):
+        if self.es_admin():
+            return self.usuario['id']
+        autorizacion = self._autorizaciones_cierre.get(turno_id)
+        if (
+            not self.usuario
+            or autorizacion is None
+            or autorizacion[0] != self.usuario['id']
+            or autorizacion[1] <= time.monotonic()
+        ):
+            raise PermissionError(
+                "Se necesita autorización reciente de Admin para asignar el siguiente turno."
+            )
+        return autorizacion[2]
+
+    def puede_asignar_tras_cierre(self, turno_id):
+        try:
+            self.responsable_asignacion_tras_cierre(turno_id)
+        except PermissionError:
+            return False
+        return True
+
+    def revocar_asignacion_tras_cierre(self, turno_id):
+        self._autorizaciones_cierre.pop(turno_id, None)
+
     def cerrar(self):
         self.usuario = None
+        self._autorizaciones_cierre.clear()
 
     def es_admin(self):
         return self.usuario is not None and self.usuario['rol'] == 'admin'
@@ -88,22 +142,58 @@ class SesionUsuarios:
         if not self.es_admin():
             raise PermissionError('Esta opción solo está disponible para Admin.')
 
-    def crear(self, nombre, password):
+    def crear(self, nombre, usuario, password):
         self.exigir_admin()
-        if not self.clave(nombre) or len(nombre.strip()) > 50:
+        nombre = nombre.strip()
+        usuario = usuario.strip()
+        if not nombre or len(nombre) > 80 or not nombre.isprintable():
+            raise ValueError('Escribe un nombre válido de entre 1 y 80 caracteres.')
+        if not self.clave(usuario) or len(usuario) > 50 or not usuario.isprintable():
             raise ValueError('Escribe un usuario de entre 1 y 50 caracteres.')
         if not password.strip() or len(password) > 128:
             raise ValueError('Escribe una contraseña de entre 1 y 128 caracteres.')
         try:
             with self.conexion() as db:
-                self._insertar(db, nombre, password, 'mesas')
+                self._insertar(db, nombre, usuario, password, 'mesas')
         except sqlite3.IntegrityError as error:
-            raise ValueError('Ya existe un usuario con ese nombre.') from error
+            raise ValueError('Ya existe una cuenta con ese usuario de acceso.') from error
 
     def listar(self):
         self.exigir_admin()
         with self.conexion() as db:
-            return db.execute('SELECT nombre, rol FROM usuarios ORDER BY rol, nombre').fetchall()
+            return db.execute(
+                'SELECT nombre, usuario, rol FROM usuarios ORDER BY rol, nombre'
+            ).fetchall()
+
+    def actualizar_cuenta(self, usuario, actual, nueva=''):
+        """Modificar la cuenta autenticada conservando su identidad y permisos."""
+        self.exigir_admin()
+        usuario = usuario.strip()
+        if not self.clave(usuario) or len(usuario) > 50 or not usuario.isprintable():
+            raise ValueError('Escribe un usuario válido de entre 1 y 50 caracteres.')
+        if nueva and (not nueva.strip() or len(nueva) > 128):
+            raise ValueError('La nueva contraseña debe tener entre 1 y 128 caracteres.')
+        try:
+            with self.conexion() as db:
+                db.execute('BEGIN IMMEDIATE')
+                fila = db.execute('SELECT sal, resumen, iteraciones FROM usuarios WHERE id = ? AND rol = ?',
+                                  (self.usuario['id'], 'admin')).fetchone()
+                if fila is None:
+                    raise PermissionError('La cuenta de administrador ya no está disponible.')
+                sal, resumen, vueltas = fila
+                prueba = hashlib.pbkdf2_hmac('sha256', actual.encode('utf-8'), sal, vueltas)
+                if not hmac.compare_digest(prueba, resumen):
+                    raise ValueError('La contraseña actual no es correcta.')
+                if nueva:
+                    sal = secrets.token_bytes(16)
+                    vueltas = self.ITERACIONES
+                    resumen = hashlib.pbkdf2_hmac('sha256', nueva.encode('utf-8'), sal, vueltas)
+                db.execute('''UPDATE usuarios SET usuario = ?, clave_nombre = ?,
+                    sal = ?, resumen = ?, iteraciones = ? WHERE id = ?''',
+                    (usuario, self.clave(usuario), sal, resumen, vueltas, self.usuario['id']))
+        except sqlite3.IntegrityError as error:
+            raise ValueError('Ya existe otro usuario con ese nombre.') from error
+        self.usuario['usuario'] = usuario
 
 
 class DialogoAcceso(FondoEspera):
@@ -223,7 +313,7 @@ class DialogoAcceso(FondoEspera):
         self.actualizar_reloj()
         self.reloj_timer.start()
         self.show()
-        self.ventana.show()
+        self.ventana.showFullScreen()
         self.raise_()
         self.nombre.setFocus()
         try:
@@ -292,23 +382,29 @@ class PaginaUsuarios(QWidget):
         titulo = QLabel('Usuarios y permisos')
         titulo.setStyleSheet('font-size: 25px; color: #F2C66D;')
         layout.addWidget(titulo)
-        descripcion = QLabel('Admin tiene acceso completo. Los usuarios nuevos solo pueden usar Mesas, pedidos y cobros.')
+        descripcion = QLabel('Admin tiene acceso completo. Los usuarios nuevos pueden usar Mesas, Clientes, pedidos y cobros.')
         descripcion.setWordWrap(True)
         layout.addWidget(descripcion)
         formulario = QFormLayout()
         self.nombre = QLineEdit()
         self.nombre.setObjectName('nuevoUsuario')
         self.nombre.setMaxLength(50)
+        self.nombre.setPlaceholderText('Ejemplo: beto')
         self.password = QLineEdit()
         self.confirmacion = QLineEdit()
         for campo in (self.password, self.confirmacion):
             campo.setMaxLength(128)
             campo.setEchoMode(QLineEdit.EchoMode.Password)
-        formulario.addRow('Usuario', self.nombre)
+        self.nombre_completo = QLineEdit()
+        self.nombre_completo.setObjectName('nuevoNombreCompleto')
+        self.nombre_completo.setMaxLength(80)
+        self.nombre_completo.setPlaceholderText('Ejemplo: Alberto Mendoza')
+        formulario.addRow('Nombre completo', self.nombre_completo)
+        formulario.addRow('Usuario para iniciar sesión', self.nombre)
         formulario.addRow('Contraseña', self.password)
         formulario.addRow('Repetir contraseña', self.confirmacion)
         layout.addLayout(formulario)
-        self.crear = QPushButton('Crear usuario · Solo Mesas')
+        self.crear = QPushButton('Crear usuario · Mesas y Clientes')
         self.crear.clicked.connect(self.guardar)
         layout.addWidget(self.crear)
         self.mensaje = QLabel('')
@@ -322,6 +418,7 @@ class PaginaUsuarios(QWidget):
 
     def limpiar(self):
         self.nombre.clear()
+        self.nombre_completo.clear()
         self.password.clear()
         self.confirmacion.clear()
         self.mensaje.clear()
@@ -330,8 +427,11 @@ class PaginaUsuarios(QWidget):
     def actualizar(self):
         self.sesion.exigir_admin()
         self.lista.clear()
-        for nombre, rol in self.sesion.listar():
-            self.lista.addItem(f'{nombre}  ·  {"Acceso completo" if rol == "admin" else "Solo Mesas"}')
+        for nombre, usuario, rol in self.sesion.listar():
+            self.lista.addItem(
+                f'{nombre}  ·  Usuario: {usuario}  ·  '
+                f'{"Acceso completo" if rol == "admin" else "Mesas y Clientes"}'
+            )
 
     def guardar(self):
         self.crear.setEnabled(False)
@@ -339,10 +439,12 @@ class PaginaUsuarios(QWidget):
             self.sesion.exigir_admin()
             if self.password.text() != self.confirmacion.text():
                 raise ValueError('Las contraseñas no coinciden.')
-            self.sesion.crear(self.nombre.text(), self.password.text())
+            self.sesion.crear(
+                self.nombre_completo.text(), self.nombre.text(), self.password.text()
+            )
             self.limpiar()
             self.actualizar()
-            self.mensaje.setText('Usuario creado. Tiene permiso para Mesas, pedidos y cobros.')
+            self.mensaje.setText('Usuario creado. Tiene permiso para Mesas, Clientes, pedidos y cobros.')
         except (ValueError, PermissionError) as error:
             self.mensaje.setText(str(error))
         except sqlite3.Error:

@@ -119,7 +119,7 @@ class ControlEspera(QObject):
                 self.temporizador.start()
 
     def mostrar(self):
-        if self.ventana.property('accesoEnCurso'):
+        if self.ventana.property('accesoEnCurso') or self.ventana.property('dialogoEnCurso'):
             self.temporizador.start()
             return
         # Nunca interrumpir un cobro, confirmación, selector o menú abierto.
