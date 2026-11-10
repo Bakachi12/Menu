@@ -1,0 +1,234 @@
+"""PedidosTable: solicitudes LAN; solo el TPV puede aceptarlas o rechazarlas.
+
+Sin dependencia de Qt: cada operación usa su propia conexión SQLite. Los hilos
+HTTP nunca escriben cuentas, ventas ni inventario.
+"""
+from contextlib import contextmanager
+from datetime import datetime
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from threading import Thread
+from urllib.parse import urlsplit
+import hmac
+import json
+import secrets
+import sqlite3
+import uuid
+
+
+class SolicitudesTable:
+    def __init__(self, ruta):
+        self.ruta = str(ruta)
+        with self.conexion() as db:
+            db.execute('''CREATE TABLE IF NOT EXISTS solicitudes_table (
+                id TEXT PRIMARY KEY, dispositivo TEXT NOT NULL, mesa TEXT NOT NULL,
+                cliente_id INTEGER, productos TEXT NOT NULL, nota TEXT NOT NULL,
+                estado TEXT NOT NULL DEFAULT 'pendiente', fecha TEXT NOT NULL,
+                responsable_id INTEGER, resuelta TEXT
+            )''')
+
+    @contextmanager
+    def conexion(self):
+        db = sqlite3.connect(self.ruta, timeout=5)
+        db.row_factory = sqlite3.Row
+        try:
+            with db:
+                yield db
+        finally:
+            db.close()
+
+    def resumen(self):
+        with self.conexion() as db:
+            productos = [dict(r) for r in db.execute('''SELECT id, nombre,
+                precio_centimos, categoria FROM productos WHERE activo = 1 ORDER BY id''')]
+            mesas = []
+            for (nombre,) in db.execute('SELECT nombre FROM mesas_configuracion ORDER BY id'):
+                fila = db.execute('SELECT productos FROM pedidos_abiertos WHERE mesa = ?', (nombre,)).fetchone()
+                cuenta = json.loads(fila[0]) if fila else []
+                clientes = [dict(c) for c in db.execute('SELECT id, nombre FROM clientes WHERE mesa = ?', (nombre,))]
+                mesas.append(dict(nombre=nombre, clientes=clientes, cuenta=cuenta,
+                                  total_centimos=sum(round(p['precio'] * 100) for p in cuenta)))
+        return dict(productos=productos, mesas=mesas)
+
+    @staticmethod
+    def validar_destino(db, mesa, cliente_id):
+        if not isinstance(mesa, str) or not db.execute(
+                'SELECT 1 FROM mesas_configuracion WHERE nombre = ?', (mesa,)).fetchone():
+            raise ValueError('La mesa ya no está disponible.')
+        if cliente_id is not None and (type(cliente_id) is not int or not db.execute(
+                'SELECT 1 FROM clientes WHERE id = ? AND mesa = ?', (cliente_id, mesa)).fetchone()):
+            raise ValueError('El cliente ya no pertenece a esta mesa.')
+
+    def enviar(self, datos):
+        if not isinstance(datos, dict):
+            raise ValueError('Solicitud inválida.')
+        try:
+            identificador = str(uuid.UUID(datos.get('id', '')))
+        except (ValueError, TypeError, AttributeError):
+            raise ValueError('Identificador de solicitud inválido.') from None
+        mesa, cliente = datos.get('mesa'), datos.get('cliente_id')
+        dispositivo, nota, lineas = datos.get('dispositivo', ''), datos.get('nota', ''), datos.get('lineas')
+        if not isinstance(dispositivo, str) or not 1 <= len(dispositivo.strip()) <= 60:
+            raise ValueError('Escribe el nombre de este dispositivo (máximo 60 caracteres).')
+        if not isinstance(nota, str) or len(nota) > 300:
+            raise ValueError('La nota admite hasta 300 caracteres.')
+        if not isinstance(lineas, list) or not 1 <= len(lineas) <= 100:
+            raise ValueError('Selecciona al menos un producto.')
+        with self.conexion() as db:
+            db.execute('BEGIN IMMEDIATE')
+            anterior = db.execute('SELECT id, estado FROM solicitudes_table WHERE id = ?', (identificador,)).fetchone()
+            if anterior:
+                return dict(anterior)
+            self.validar_destino(db, mesa, cliente)
+            if db.execute("SELECT COUNT(*) FROM solicitudes_table WHERE estado = 'pendiente'").fetchone()[0] >= 300:
+                raise ValueError('La bandeja está llena. Espera a que el cajero revise las solicitudes.')
+            productos = []
+            for linea in lineas:
+                if not isinstance(linea, dict) or type(linea.get('producto_id')) is not int or type(linea.get('cantidad')) is not int:
+                    raise ValueError('Producto o cantidad inválidos.')
+                cantidad = linea['cantidad']
+                if not 1 <= cantidad <= 99 or len(productos) + cantidad > 200:
+                    raise ValueError('Máximo 99 unidades por línea y 200 por solicitud.')
+                fila = db.execute('SELECT nombre, categoria, precio_centimos FROM productos WHERE id = ? AND activo = 1',
+                                  (linea['producto_id'],)).fetchone()
+                if not fila:
+                    raise ValueError('Un producto ya no está disponible. Actualiza el menú.')
+                productos.extend([dict(producto_id=linea['producto_id'], nombre=fila[0],
+                                       categoria=fila[1], precio=fila[2] / 100)] * cantidad)
+            db.execute('''INSERT INTO solicitudes_table
+                (id, dispositivo, mesa, cliente_id, productos, nota, fecha)
+                VALUES (?, ?, ?, ?, ?, ?, ?)''', (identificador, dispositivo.strip(), mesa, cliente,
+                json.dumps(productos, ensure_ascii=False), nota.strip(), datetime.now().isoformat(timespec='seconds')))
+        return dict(id=identificador, estado='pendiente')
+
+    def listar(self):
+        with self.conexion() as db:
+            return [dict(r) for r in db.execute("SELECT * FROM solicitudes_table WHERE estado = 'pendiente' ORDER BY fecha, rowid")]
+
+    def estado(self, identificador):
+        with self.conexion() as db:
+            fila = db.execute('SELECT id, estado FROM solicitudes_table WHERE id = ?', (identificador,)).fetchone()
+            if not fila:
+                raise ValueError('Solicitud no encontrada.')
+            return dict(fila)
+
+    def resolver(self, identificador, aceptar, sesion, turnos):
+        # Se llama exclusivamente desde el hilo de Qt, usando la sesión real.
+        turnos.exigir_turno_activo()
+        with self.conexion() as db:
+            db.execute('BEGIN IMMEDIATE')
+            solicitud = db.execute('SELECT * FROM solicitudes_table WHERE id = ?', (identificador,)).fetchone()
+            if not solicitud or solicitud['estado'] != 'pendiente':
+                raise ValueError('La solicitud ya fue revisada.')
+            cuenta = None
+            if aceptar:
+                mesa, cliente = solicitud['mesa'], solicitud['cliente_id']
+                self.validar_destino(db, mesa, cliente)
+                nombre = db.execute('SELECT nombre FROM clientes WHERE id = ?', (cliente,)).fetchone() if cliente is not None else None
+                nuevos = json.loads(solicitud['productos'])
+                for p in nuevos:
+                    actual = db.execute('SELECT nombre, categoria, precio_centimos FROM productos WHERE id = ? AND activo = 1',
+                                        (p['producto_id'],)).fetchone()
+                    if not actual or tuple(actual) != (p['nombre'], p['categoria'], round(p['precio'] * 100)):
+                        raise ValueError('El catálogo cambió. Rechaza esta solicitud y pide enviarla de nuevo.')
+                    p.pop('producto_id')
+                    p.update(cliente_id=cliente, cliente_nombre=nombre[0] if nombre else '')
+                fila = db.execute('SELECT productos FROM pedidos_abiertos WHERE mesa = ?', (mesa,)).fetchone()
+                cuenta = (json.loads(fila[0]) if fila else []) + nuevos
+                db.execute('''INSERT INTO pedidos_abiertos(mesa, productos) VALUES (?, ?)
+                    ON CONFLICT(mesa) DO UPDATE SET productos = excluded.productos''', (mesa, json.dumps(cuenta, ensure_ascii=False)))
+            db.execute('''UPDATE solicitudes_table SET estado = ?, responsable_id = ?, resuelta = ? WHERE id = ?''',
+                       ('aceptada' if aceptar else 'rechazada', sesion.usuario['id'], datetime.now().isoformat(timespec='seconds'), identificador))
+        return solicitud['mesa'], cuenta
+
+
+class ServidorTable:
+    def __init__(self, solicitudes):
+        self.solicitudes = solicitudes
+        self.http = None
+        self.clave = ''
+
+    def iniciar(self, host='0.0.0.0', puerto=8765):
+        if self.http:
+            return self.http.server_port
+        self.clave = secrets.token_urlsafe(24)
+        servicio, clave = self.solicitudes, self.clave
+        pagina = Path(__file__).with_name('pedidos_table.html').read_bytes()
+
+        class Handler(BaseHTTPRequestHandler):
+            def setup(self):
+                super().setup()
+                self.connection.settimeout(10)
+
+            def log_message(self, *args):
+                pass  # No guardar claves ni datos de clientes en registros HTTP.
+
+            def responder(self, codigo, datos, tipo='application/json; charset=utf-8'):
+                contenido = datos if isinstance(datos, bytes) else json.dumps(datos, ensure_ascii=False).encode()
+                self.send_response(codigo)
+                self.send_header('Content-Type', tipo)
+                self.send_header('Content-Length', str(len(contenido)))
+                self.send_header('Cache-Control', 'no-store')
+                self.send_header('X-Content-Type-Options', 'nosniff')
+                self.send_header('Referrer-Policy', 'no-referrer')
+                self.send_header('X-Frame-Options', 'DENY')
+                self.end_headers()
+                self.wfile.write(contenido)
+
+            def autorizado(self):
+                return hmac.compare_digest(self.headers.get('Authorization', '').encode('utf-8'), ('Bearer ' + clave).encode('utf-8'))
+
+            def do_GET(self):
+                ruta = urlsplit(self.path).path
+                if ruta == '/':
+                    return self.responder(200, pagina, 'text/html; charset=utf-8')
+                if not self.autorizado():
+                    return self.responder(401, dict(error='Clave incorrecta o conexión reiniciada.'))
+                try:
+                    if ruta == '/api/resumen':
+                        return self.responder(200, servicio.resumen())
+                    if ruta.startswith('/api/solicitudes/'):
+                        return self.responder(200, servicio.estado(ruta.rsplit('/', 1)[-1]))
+                    if ruta.startswith('/api/imagen/'):
+                        with servicio.conexion() as db:
+                            fila = db.execute('SELECT imagen FROM productos WHERE id = ? AND activo = 1', (ruta.rsplit('/', 1)[-1],)).fetchone()
+                        if fila and fila[0]:
+                            imagen = Path(fila[0])
+                            # Solo imágenes gestionadas por el TPV, nunca rutas del cliente.
+                            raiz = Path(servicio.ruta).resolve().parent / 'imagenes'
+                            if imagen.resolve().parent == raiz and imagen.suffix.lower() == '.png' and imagen.stat().st_size <= 5_000_000:
+                                return self.responder(200, imagen.read_bytes(), 'image/png')
+                    self.responder(404, dict(error='Recurso no encontrado.'))
+                except ValueError as e:
+                    self.responder(400, dict(error=str(e)))
+                except (sqlite3.Error, OSError):
+                    self.responder(503, dict(error='No se pudo leer. Inténtalo de nuevo.'))
+
+            def do_POST(self):
+                if not self.autorizado():
+                    return self.responder(401, dict(error='Clave incorrecta o conexión reiniciada.'))
+                if self.path != '/api/solicitudes':
+                    return self.responder(404, dict(error='Recurso no encontrado.'))
+                try:
+                    longitud = int(self.headers.get('Content-Length', '0'))
+                    if not 0 < longitud <= 24000:
+                        raise ValueError('Solicitud demasiado grande o vacía.')
+                    if self.headers.get('Content-Type', '').split(';')[0] != 'application/json':
+                        raise ValueError('Se requiere JSON.')
+                    datos = json.loads(self.rfile.read(longitud))
+                    self.responder(200, servicio.enviar(datos))
+                except (ValueError, UnicodeDecodeError) as e:
+                    self.responder(400, dict(error=str(e)))
+                except sqlite3.Error:
+                    self.responder(503, dict(error='No se pudo guardar. Reintenta el envío.'))
+
+        self.http = ThreadingHTTPServer((host, puerto), Handler)
+        Thread(target=self.http.serve_forever, daemon=True).start()
+        return self.http.server_port
+
+    def detener(self):
+        if self.http:
+            self.http.shutdown()
+            self.http.server_close()
+            self.http = None
+        self.clave = ''

@@ -159,3 +159,9 @@ def registrar_venta(sesion, nombre_mesa, clientes, productos, turno_id=None):
         )
         conexion.execute('DELETE FROM pedidos_abiertos WHERE mesa = ?', (nombre_mesa,))
         conexion.execute('UPDATE clientes SET mesa = NULL WHERE mesa = ?', (nombre_mesa,))
+        # Un pedido pendiente de la cuenta anterior nunca pasa a la siguiente.
+        if conexion.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'solicitudes_table'").fetchone():
+            conexion.execute("""UPDATE solicitudes_table SET estado = 'rechazada',
+                responsable_id = ?, resuelta = ? WHERE mesa = ? AND estado = 'pendiente'""",
+                (sesion.usuario['id'], datetime.now().isoformat(timespec='seconds'), nombre_mesa))
+

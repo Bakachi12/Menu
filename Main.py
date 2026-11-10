@@ -1821,6 +1821,7 @@ def aplicar_permisos():
     """Admin usa el menú de gestión; empleados operan según su turno."""
     admin = sesion.es_admin()
     puede_operar = admin or gestion_turnos.permite_operar()
+    btn_pedidos_table.setVisible(sesion.usuario is not None and puede_operar)
     for boton in botones_navegacion:
         permitido = sesion.usuario is not None and (
             (admin and boton not in (
@@ -1876,6 +1877,37 @@ def aplicar_permisos():
 
 pagina_inventario.al_cambio_turno = aplicar_permisos
 
+# La terminal móvil solo envía solicitudes. Esta página las incorpora desde Qt.
+from pedidos_table_ui import PaginaPedidosTable
+btn_pedidos_table = QPushButton('PedidosTable')
+contenido_menu.layout().insertWidget(0, btn_pedidos_table)
+
+def reflejar_solicitud_table(mesa, cuenta):
+    pedidos[mesa] = cuenta
+    pantalla = ventanas_pedido.get(mesa)
+    if pantalla:
+        actualizar_cuenta(mesa, pantalla.findChild(QListWidget, 'Listapedido'),
+                          pantalla.findChild(QLabel, 'lblTotal'))
+    filtrar_mesas(filtro_mesas_actual)
+
+pagina_pedidos_table = PaginaPedidosTable(sesion, gestion_turnos,
+                                         reflejar_solicitud_table, btn_pedidos_table)
+paginas.addWidget(pagina_pedidos_table)
+paginas_operacion = (*paginas_operacion, pagina_pedidos_table)
+
+def abrir_pedidos_table():
+    try:
+        gestion_turnos.exigir_turno_activo()
+    except PermissionError as error:
+        QMessageBox.warning(ventana, 'PedidosTable', str(error))
+        return
+    titulo_pagina.setText('PedidosTable')
+    paginas.setCurrentWidget(pagina_pedidos_table)
+    pagina_pedidos_table.actualizar()
+
+btn_pedidos_table.clicked.connect(abrir_pedidos_table)
+app.aboutToQuit.connect(pagina_pedidos_table.servidor.detener)
+
 def mostrar_resultado_cierre():
     aplicar_permisos()
     titulo_pagina.setText("Inventario")
@@ -1917,3 +1949,4 @@ control_espera = ControlEspera(ventana, segundos=120)
 # Mostrar la aplicación
 ventana.showFullScreen()
 sys.exit(app.exec())
+
