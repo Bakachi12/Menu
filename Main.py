@@ -3,6 +3,27 @@
 Guía: los datos están en datos.py; la cuenta y los botones en vista_pedidos.py;
 los colores compartidos en estilos.py. Consulta GUIA_DEL_PROYECTO.md.
 """
+import os
+import sys
+from pathlib import Path
+
+# En el EXE, prioriza las DLL de Qt incluidas en Menu antes de importar PySide6.
+# Otro programa puede haber agregado una versión distinta de Qt al PATH de Windows.
+_directorios_dll_menu = []
+if getattr(sys, "frozen", False):
+    raiz_empaquetada = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
+    rutas_dll = [raiz_empaquetada / "PySide6", raiz_empaquetada / "shiboken6"]
+    os.environ["PATH"] = os.pathsep.join(
+        [str(ruta) for ruta in rutas_dll if ruta.is_dir()]
+        + [os.environ.get("PATH", "")]
+    )
+    for ruta in rutas_dll:
+        if ruta.is_dir() and hasattr(os, "add_dll_directory"):
+            try:
+                _directorios_dll_menu.append(os.add_dll_directory(str(ruta)))
+            except OSError:
+                pass
+
 from datos import preparar_archivo_datos, inicializar_catalogo, cargar_productos as leer_productos, registrar_venta, historial_cobros, METODOS_PAGO
 from inventario import (
     GestionTurnos, PaginaHojaInventarios, PaginaHorarioTurnos, PaginaInventario,
@@ -10,8 +31,6 @@ from inventario import (
 from vista_pedidos import cargar_pantalla, dibujar_cuenta, dibujar_productos
 from estilos import HISTORIAL, CONFIGURACION, CATALOGO, TEMA
 
-import sys
-from pathlib import Path
 import sqlite3
 from datetime import datetime, timedelta
 from actualizador import comprobar_e_instalar
