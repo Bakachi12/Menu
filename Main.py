@@ -14,6 +14,13 @@ import sys
 from pathlib import Path
 import sqlite3
 from datetime import datetime, timedelta
+from actualizador import comprobar_e_instalar
+
+# Busca Releases nuevas antes de abrir la sesión o la base local. Si hay una,
+# el actualizador espera a que este proceso termine, reemplaza el EXE y lo reinicia.
+if comprobar_e_instalar():
+    raise SystemExit(0)
+
 from PySide6.QtWidgets import QComboBox, QHeaderView, QTableWidget, QTableWidgetItem
 from PySide6.QtWidgets import QFrame, QApplication, QGridLayout, QVBoxLayout, QStackedWidget, QPushButton, QSizePolicy, QLineEdit, QWidget, QLabel, QScrollArea, QListWidget, QHBoxLayout, QListWidgetItem
 

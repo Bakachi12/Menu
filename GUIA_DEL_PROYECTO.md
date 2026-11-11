@@ -73,6 +73,27 @@ Los datos se guardan en `TPVBar/ventas.db`, dentro de la ubicación de datos que
 
 Al modificar el programa, conserva las comprobaciones de permisos y las transacciones: ocultar un botón no sustituye validar quién ejecuta la acción. Trabaja con una base temporal para probar cobros o cambios de clientes.
 
+## Ejecutable de Windows y actualizaciones
+
+El ejecutable se publica como `Menu.exe` en GitHub Releases. El flujo `.github/workflows/windows-release.yml` compila el programa al crear y subir una etiqueta de versión con formato `vMAJOR.MINOR.PATCH`, por ejemplo `v0.1.0`; luego adjunta el EXE a esa Release. Para publicar una actualización, primero sube los cambios a `main` y después crea la etiqueta apuntando al commit que debe distribuirse. El archivo `version.py` es la versión de desarrollo; el flujo la reemplaza con la etiqueta al compilar.
+
+Al iniciar un `Menu.exe`, `actualizador.py` consulta la última Release estable de `Bakachi12/Menu`. Si la Release contiene una versión más nueva y el archivo `Menu.exe`, la descarga, comprueba el tamaño y el SHA-256 que informa GitHub, cierra la versión abierta, sustituye el ejecutable y vuelve a iniciar Menu. Si no hay conexión, el EXE sigue abriendo normalmente. La carpeta donde está instalado el ejecutable debe permitir escritura al usuario de Windows; para evitar permisos de administrador, coloca `Menu.exe` en una carpeta propia, como el Escritorio.
+
+El actualizador solo reemplaza el ejecutable. La base del negocio permanece en `%LOCALAPPDATA%\TPVBar\ventas.db` y no se descarga ni sustituye con la Release. Si falla una comprobación, revisa `%LOCALAPPDATA%\TPVBar\actualizador.log`.
+
+Para compilar manualmente en Windows:
+
+```powershell
+python -m pip install -r requirements-build.txt
+python -m PyInstaller --clean --noconfirm --onefile --windowed --name Menu `
+  --add-data "inicio.ui;." --add-data "pedido.ui;." `
+  --add-data "confirmar_cobro.ui;." --add-data "fondo_bar.png;." `
+  --add-data "imagenes_pagos;imagenes_pagos" `
+  --add-data "pedidos_table.html;." Main.py
+```
+
+El archivo se crea en `dist\Menu.exe`. Para que ese EXE se actualice automáticamente en los equipos, la versión nueva también debe publicarse en GitHub Releases con el nombre exacto `Menu.exe`.
+
 Los turnos y sus conteos se conservan en `turnos` y `turno_inventario`, en esa misma base. La inicialización de `GestionTurnos` crea esas tablas y agrega `ventas.turno_id`, `turnos.asignacion_fecha` y `turnos.nombre_cajero` si faltan, sin reemplazar los datos existentes. En turnos anteriores a la captura de asignación, la fecha puede aparecer como no disponible; el nombre usa el usuario actual como respaldo. Las ventas anteriores a la asociación de turnos no tienen un turno asociado. Admin puede seguir operando sin turno; sus ventas no se atribuyen a la caja de un empleado.
 
 `existencias_inventario` guarda las unidades disponibles en almacén. Al asignarlas al cajero se descuentan; al cierre, las unidades contadas se devuelven al almacén y quedan disponibles para el siguiente turno. `movimientos_inventario` conserva el detalle interno de entradas de Admin, entregas, ventas, cancelaciones, faltantes y sobrantes. La opción de la barra izquierda “Hoja de inventarios” muestra una lista de tarjetas por turno; al tocar una tarjeta se abre una tabla integrada con unidades recibidas/verificadas al abrir, inventario agregado durante el turno, unidades vendidas, importe vendido, unidades devueltas y faltantes/sobrantes al cierre. Los turnos pendientes y activos también aparecen, con devolución y diferencias marcadas como pendientes. El dinero vendido se calcula con el precio guardado en cada venta. Admin accede a las pantallas de asignación, entradas y existencias desde botones separados en Inicio; Inventario no aparece en su barra lateral y “Hoja de inventarios” permanece como acceso lateral al reporte.

@@ -1,0 +1,48 @@
+name: Crear ejecutable de Windows
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+    steps:
+      - name: Obtener el código
+        uses: actions/checkout@v4
+
+      - name: Preparar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependencias de compilación
+        run: python -m pip install -r requirements-build.txt
+
+      - name: Incluir la versión de esta Release
+        shell: pwsh
+        run: |
+          $version = $env:GITHUB_REF_NAME -replace '^v', ''
+          Set-Content -Path version.py -Value "__version__ = `"$version`"" -Encoding utf8
+
+      - name: Compilar Menu.exe
+        shell: pwsh
+        run: >-
+          python -m PyInstaller --clean --noconfirm --onefile --windowed --name Menu
+          --add-data "inicio.ui;."
+          --add-data "pedido.ui;."
+          --add-data "confirmar_cobro.ui;."
+          --add-data "fondo_bar.png;."
+          --add-data "imagenes_pagos;imagenes_pagos"
+          --add-data "pedidos_table.html;."
+          Main.py
+
+      - name: Publicar ejecutable en GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: dist/Menu.exe
