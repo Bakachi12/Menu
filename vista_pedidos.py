@@ -135,7 +135,31 @@ def poner_imagen_producto(boton, producto):
         distribucion.addWidget(etiqueta)
 
 
-def dibujar_cuenta(lista_pedido, lbl_total, productos, clientes, cliente_activo, al_cambiar):
+class CabeceraCliente(QWidget):
+    """Ajusta la altura de la fila al nombre cuando cambia el ancho de la cuenta."""
+    def __init__(self, item):
+        super().__init__()
+        self.item = item
+
+    def resizeEvent(self, evento):
+        super().resizeEvent(evento)
+        self.layout().activate()
+        tarjeta = self.layout().itemAt(0).widget()
+        contenido = tarjeta.layout()
+        margenes = contenido.contentsMargins()
+        contenido.activate()
+        nombre = contenido.itemAt(0).widget()
+        importe = contenido.itemAt(1).widget()
+        alto_tarjeta = (nombre.heightForWidth(max(1, nombre.width())) + importe.sizeHint().height()
+                        + margenes.top() + margenes.bottom() + contenido.spacing() + 8)
+        altura = max(74, alto_tarjeta + 8)
+        tarjeta.setFixedHeight(altura - 8)
+        if self.item.sizeHint().height() != altura:
+            self.item.setSizeHint(QSize(0, altura))
+
+
+def dibujar_cuenta(lista_pedido, lbl_total, productos, clientes, cliente_activo, al_cambiar,
+                   al_retirar, al_seleccionar):
     lista_pedido.clear()
     grupos = {c['id']: {'nombre': c['nombre'], 'productos': []}
               for c in clientes}
@@ -145,31 +169,62 @@ def dibujar_cuenta(lista_pedido, lbl_total, productos, clientes, cliente_activo,
             grupos[identificador] = {
                 'nombre': producto.get('cliente_nombre') or 'Cuenta general', 'productos': []}
         grupos[identificador]['productos'].append(producto)
-    if not grupos:
+    if None not in grupos:
         grupos[None] = {'nombre': 'Cuenta general', 'productos': []}
     total = 0
     for identificador, grupo in grupos.items():
         subtotal_cliente = sum(centimos(p) for p in grupo['productos'])
         total += subtotal_cliente
-        cabecera = QWidget()
+        item = QListWidgetItem()
+        cabecera = CabeceraCliente(item)
         cabecera.setObjectName('CabeceraCliente')
-        activo = cliente_activo == identificador
-        cabecera.setStyleSheet('QWidget#CabeceraCliente { background: ' +
-                              ('#29394F' if activo else '#182338') + '; border-radius: 8px; }')
         fila_cabecera = QHBoxLayout(cabecera)
-        fila_cabecera.setContentsMargins(10, 8, 10, 8)
+        fila_cabecera.setContentsMargins(4, 4, 4, 4)
+        fila_cabecera.setSpacing(8)
+        tarjeta = QPushButton()
+        tarjeta.setAccessibleName(grupo['nombre'])
+        tarjeta.setCheckable(True)
+        tarjeta.setChecked(cliente_activo == identificador)
+        tarjeta.setMinimumHeight(66)
+        tarjeta.setStyleSheet("""
+            QPushButton { background: #1C293C; border: 2px solid #34465F; border-radius: 12px; }
+            QPushButton:checked { background: #343027; border-color: #E8BA68; }
+            QPushButton:focus { border-color: #F6D595; }
+        """)
+        contenido = QVBoxLayout(tarjeta)
+        contenido.setContentsMargins(16, 8, 16, 8)
+        contenido.setSpacing(2)
         nombre = QLabel(grupo['nombre'])
-        nombre.setTextFormat(Qt.TextFormat.PlainText)
         nombre.setWordWrap(True)
         nombre.setMinimumWidth(0)
-        nombre.setStyleSheet('color: #F2C66D; background: transparent; font-size: 16px; font-weight: bold;')
+        nombre.setTextFormat(Qt.TextFormat.PlainText)
+        nombre.setStyleSheet('background: transparent; padding: 0; border: none; color: #FAF5EA; font-size: 18px; font-weight: bold;')
         importe = QLabel(f'B/.{subtotal_cliente / 100:.2f}')
-        importe.setStyleSheet('color: #F2C66D; background: transparent; font-size: 15px; font-weight: bold;')
-        fila_cabecera.addWidget(nombre, 1)
-        fila_cabecera.addWidget(importe)
-        item = QListWidgetItem()
+        importe.setStyleSheet('background: transparent; padding: 0; border: none; color: #F2C66D; font-size: 15px;')
+        importe.setFixedHeight(importe.sizeHint().height())
+        for etiqueta in (nombre, importe):
+            etiqueta.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+            contenido.addWidget(etiqueta)
+        tarjeta.clicked.connect(lambda checked=False, c=identificador: al_seleccionar(c))
+        fila_cabecera.addWidget(tarjeta, 1)
+        if identificador is not None and not grupo['productos'] and al_retirar:
+            retirar = QPushButton('Retirar')
+            retirar.setObjectName('RetirarClienteMesa')
+            retirar.setToolTip('Quita al cliente de esta mesa sin borrar su registro ni cobrar')
+            retirar.setMinimumSize(88, 52)
+            retirar.setStyleSheet('''
+                QPushButton#RetirarClienteMesa { background: #303C50; color: #F4F2ED;
+                    border: 1px solid #53647D; border-radius: 8px; padding: 8px 12px;
+                    font-size: 14px; font-weight: bold; }
+                QPushButton#RetirarClienteMesa:hover { background: #46566B; border-color: #D6AE62; }
+                QPushButton#RetirarClienteMesa:pressed { background: #D6AE62; color: #101725; }
+            ''')
+            retirar.clicked.connect(
+                lambda checked=False, c=identificador: al_retirar(c)
+            )
+            fila_cabecera.addWidget(retirar)
         item.setData(Qt.ItemDataRole.UserRole, identificador)
-        item.setSizeHint(QSize(0, 64))
+        item.setSizeHint(QSize(0, 74))
         lista_pedido.addItem(item)
         lista_pedido.setItemWidget(item, cabecera)
         cantidades = {}

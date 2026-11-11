@@ -4,6 +4,32 @@ Los selectores #Nombre se refieren al objectName de los widgets.
 Los archivos .ui mantienen el diseño de las pantallas hechas en Qt Designer.
 """
 
+# Identidad del bar: azul noche, piedra oscura y oro cálido.
+FONDO = "#0B1220"
+PANEL = "#121C2B"
+PANEL_ELEVADO = "#1A2738"
+BORDE = "#34445A"
+DORADO = "#D6AE62"
+TEXTO = "#F4F2ED"
+
+# Controles comunes para pantallas táctiles; las pantallas pueden añadir
+# reglas más específicas para botones de acción o estados peligrosos.
+TEMA = """
+QToolTip { background: #152235; color: #F4F2ED; border: 1px solid #D6AE62;
+    border-radius: 6px; padding: 6px; }
+QLineEdit, QComboBox, QSpinBox, QTimeEdit {
+    background: #121C2B; color: #F4F2ED; border: 1px solid #34445A;
+    border-radius: 9px; padding: 10px 12px; selection-background-color: #D6AE62;
+}
+QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QTimeEdit:focus {
+    border: 2px solid #D6AE62;
+}
+QScrollBar:vertical { background: #0B1220; width: 12px; margin: 2px; }
+QScrollBar::handle:vertical { background: #46566B; min-height: 28px; border-radius: 5px; }
+QScrollBar::handle:vertical:hover { background: #D6AE62; }
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
+"""
+
 # Diseño de formularios.
 FORMULARIOS = """
 QDialog, QWidget#Usuarios { background: #0B1020; color: #F4F2ED; }
@@ -19,18 +45,18 @@ QPushButton:disabled { background: #34445E; color: #A8B4C8; }
 # Diseño de historial.
 HISTORIAL = """
 QTableWidget {
-        background-color: #292938;
-        alternate-background-color: #343446;
+        background-color: rgba(41, 41, 56, 205);
+        alternate-background-color: rgba(52, 52, 70, 215);
         color: white;
         border: none;
         gridline-color: #414154;
         font-size: 14px;
-        selection-background-color: #D4AF37;
+        selection-background-color: rgba(212, 175, 55, 235);
         selection-color: #20202B;
     }
 
     QHeaderView::section {
-        background-color: #414154;
+        background-color: rgba(65, 65, 84, 225);
         color: #D4AF37;
         padding: 10px;
         border: none;

@@ -3,12 +3,14 @@ import json
 import sqlite3
 from datetime import datetime, timedelta
 
-from PySide6.QtCore import Qt, QTime
-from PySide6.QtGui import QIntValidator
+from shiboken6 import isValid
+from PySide6.QtCore import Qt, QTime, QEvent
+from PySide6.QtGui import QIntValidator, QColor, QPainter
 from PySide6.QtWidgets import (
-    QAbstractItemView, QComboBox, QFrame, QHBoxLayout, QHeaderView, QLabel,
+    QApplication, QAbstractItemView, QComboBox, QFrame,
+    QHBoxLayout, QHeaderView, QLabel,
     QLineEdit, QPushButton, QScroller, QScrollArea, QTimeEdit, QTreeWidget,
-    QTreeWidgetItem, QVBoxLayout, QWidget,
+    QTreeWidgetItem, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
 
@@ -186,7 +188,7 @@ class GestionTurnos:
         self.sesion.exigir_admin()
         with self.sesion.conexion() as db:
             return db.execute(
-                "SELECT id, nombre FROM usuarios WHERE rol = 'mesas' ORDER BY nombre"
+                "SELECT id, nombre FROM usuarios WHERE rol = 'mesas' AND tipo = 'normal' ORDER BY nombre"
             ).fetchall()
 
     def empleados_para_asignacion_tras_cierre(self, turno_cerrado_id):
@@ -208,7 +210,7 @@ class GestionTurnos:
                     "La asignación manual solo está disponible después del cierre autorizado."
                 )
             return db.execute(
-                "SELECT id, nombre FROM usuarios WHERE rol = 'mesas' ORDER BY nombre"
+                "SELECT id, nombre FROM usuarios WHERE rol = 'mesas' AND tipo = 'normal' ORDER BY nombre"
             ).fetchall()
 
     def horarios_programados(self):
@@ -231,7 +233,7 @@ class GestionTurnos:
             raise ValueError("Escribe una hora válida en formato HH:MM.") from error
         with self.sesion.conexion() as db:
             existe = db.execute(
-                "SELECT 1 FROM usuarios WHERE id = ? AND rol = 'mesas'",
+                "SELECT 1 FROM usuarios WHERE id = ? AND rol = 'mesas' AND tipo = 'normal'",
                 (usuario_id,),
             ).fetchone()
             if not existe:
@@ -442,6 +444,44 @@ class GestionTurnos:
                 administrador_id, turno[0],
             ))
 
+    def agregar_existencia_venta_libre(self, producto_id, cantidad, password_admin):
+        if not self.sesion.es_venta_libre():
+            raise PermissionError("Esta acción solo está disponible para Venta libre.")
+        if not self.sesion.inventario_libre_verificado:
+            raise PermissionError("Verifica el inventario antes de agregar existencias.")
+        if not isinstance(cantidad, int) or cantidad <= 0:
+            raise ValueError("El inventario agregado debe ser de al menos una unidad.")
+        administrador_id = self.sesion.identificar_admin(password_admin)
+        if administrador_id is None:
+            raise PermissionError("La contraseña de Admin no es correcta.")
+        with self.sesion.conexion() as db:
+            db.execute("BEGIN IMMEDIATE")
+            producto = db.execute("""
+                SELECT nombre, categoria FROM productos
+                WHERE id = ? AND activo = 1
+            """, (producto_id,)).fetchone()
+            if producto is None:
+                raise ValueError("Selecciona un producto activo.")
+            db.execute("""
+                INSERT OR IGNORE INTO existencias_inventario
+                    (producto_id, producto_nombre, producto_categoria, cantidad)
+                VALUES (?, ?, ?, 0)
+            """, (producto_id, producto[0], producto[1]))
+            db.execute("""
+                UPDATE existencias_inventario
+                SET producto_nombre = ?, producto_categoria = ?, cantidad = cantidad + ?
+                WHERE producto_id = ?
+            """, (producto[0], producto[1], cantidad, producto_id))
+            db.execute("""
+                INSERT INTO movimientos_inventario
+                    (producto_id, producto_nombre, producto_categoria, tipo, cantidad,
+                     usuario_id, detalle)
+                VALUES (?, ?, ?, 'entrada_venta_libre', ?, ?, ?)
+            """, (
+                producto_id, producto[0], producto[1], cantidad,
+                administrador_id, "Entrada de inventario autorizada en Venta libre",
+            ))
+
     def turno_abierto(self):
         with self.sesion.conexion() as db:
             fila = db.execute("""
@@ -470,6 +510,8 @@ class GestionTurnos:
     def permite_operar(self):
         if self.sesion.es_admin():
             return True
+        if self.sesion.es_venta_libre():
+            return self.sesion.inventario_libre_verificado
         return bool(
             self.sesion.usuario
             and (turno := self.turno_del_usuario(self.sesion.usuario["id"]))
@@ -477,8 +519,15 @@ class GestionTurnos:
         )
 
     def exigir_turno_activo(self):
+        self.exigir_acceso_venta()
+
+    def exigir_acceso_venta(self):
         if not self.sesion.usuario:
             raise PermissionError("Inicia sesión para continuar.")
+        if self.sesion.es_venta_libre():
+            if not self.sesion.inventario_libre_verificado:
+                raise PermissionError("Verifica el inventario antes de vender.")
+            return
         if not self.sesion.es_admin() and not self.permite_operar():
             raise PermissionError(
                 "No tienes un turno activo. Abre Inventario y confirma tu asignación."
@@ -486,6 +535,9 @@ class GestionTurnos:
 
     def turno_id_para_venta(self):
         if self.sesion.es_admin():
+            return None
+        if self.sesion.es_venta_libre():
+            self.exigir_acceso_venta()
             return None
         if not self.sesion.usuario:
             raise PermissionError("Inicia sesión para continuar.")
@@ -495,6 +547,45 @@ class GestionTurnos:
                 "No tienes un turno activo. Abre Inventario y confirma tu asignación."
             )
         return turno["id"]
+
+    def verificar_inventario_venta_libre(self, cantidades):
+        """Acepta el conteo del almacén antes de habilitar el perfil de venta libre."""
+        if not self.sesion.es_venta_libre():
+            raise PermissionError("Esta verificación solo corresponde a Venta libre.")
+        if not isinstance(cantidades, dict) or any(
+            not isinstance(n, int) or n < 0 for n in cantidades.values()
+        ):
+            raise ValueError("Indica cantidades enteras válidas.")
+        with self.sesion.conexion() as db:
+            db.execute("BEGIN IMMEDIATE")
+            actuales = {
+                p: (nombre, categoria, stock)
+                for p, nombre, categoria, stock in db.execute("""
+                    SELECT e.producto_id, e.producto_nombre, e.producto_categoria, e.cantidad
+                    FROM existencias_inventario e JOIN productos p ON p.id=e.producto_id
+                    WHERE p.activo=1
+                """)
+            }
+            if set(cantidades) != set(actuales):
+                raise ValueError("Cuenta todos los productos del inventario mostrado.")
+            if any(type(cantidad) is not int or cantidad < 0 for cantidad in cantidades.values()):
+                raise ValueError("Completa el conteo físico de todos los productos.")
+            for producto_id, contado in cantidades.items():
+                nombre, categoria, sistema = actuales[producto_id]
+                if contado != sistema:
+                    diferencia = contado - sistema
+                    db.execute("UPDATE existencias_inventario SET cantidad=? WHERE producto_id=?",
+                               (contado, producto_id))
+                    if diferencia:
+                        db.execute("""
+                            INSERT INTO movimientos_inventario
+                                (producto_id,producto_nombre,producto_categoria,tipo,cantidad,usuario_id,detalle)
+                            VALUES (?,?,?,?,?,?,?)
+                        """, (producto_id, nombre, categoria,
+                              'verificacion_venta_libre' if diferencia > 0 else 'faltante_venta_libre',
+                              abs(diferencia), self.sesion.usuario['id'],
+                              'Ajuste según conteo de apertura de Venta libre'))
+        self.sesion.inventario_libre_verificado = True
 
     @staticmethod
     def _contar_productos_vendidos(ventas):
@@ -520,7 +611,7 @@ class GestionTurnos:
         horario_id=None, fecha_programada=None, responsable_id=None,
     ):
         usuario = db.execute(
-            "SELECT nombre FROM usuarios WHERE id = ? AND rol = 'mesas'",
+            "SELECT nombre FROM usuarios WHERE id = ? AND rol = 'mesas' AND tipo = 'normal'",
             (usuario_id,),
         ).fetchone()
         if usuario is None:
@@ -1703,6 +1794,18 @@ class PaginaHojaInventarios(QWidget):
                 color: #F2C66D; font-size: 29px; font-weight: 600;
             }
             QLabel#EstadoHojaInventarios { color: #FFAEAE; font-size: 16px; }
+            QFrame#TarjetaTurnoHoja {
+                background: #151F30; border: 1px solid #29384E; border-radius: 16px;
+            }
+            QFrame#TarjetaTurnoHoja:hover {
+                background: #1B293F; border: 1px solid #D6AE62;
+            }
+            QPushButton#TurnoHoja {
+                background: transparent; color: #F4F2ED; border: none;
+                text-align: left; padding: 18px; font-size: 17px;
+            }
+            QPushButton#TurnoHoja:pressed { color: #F2C66D; padding-top: 20px; }
+            QLabel#EstadoTurnoHoja { color: #F2C66D; font-size: 14px; font-weight: bold; }
         """)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 20, 24, 20)
@@ -1711,9 +1814,7 @@ class PaginaHojaInventarios(QWidget):
         titulo = QLabel("Hoja de inventarios")
         titulo.setObjectName("TituloHojaInventarios")
         layout.addWidget(titulo)
-        subtitulo = QLabel(
-            "Cada turno aparece una vez. Pulsa su encabezado para ver los productos y comparar cantidades."
-        )
+        subtitulo = QLabel("Consulta los turnos y toca una tarjeta para abrir su detalle.")
         subtitulo.setWordWrap(True)
         layout.addWidget(subtitulo)
 
@@ -1722,90 +1823,45 @@ class PaginaHojaInventarios(QWidget):
         self.estado.setWordWrap(True)
         layout.addWidget(self.estado)
 
-        self.tabla = QTreeWidget()
-        self.tabla.setColumnCount(8)
-        self.tabla.setHeaderLabels([
-            "Productos",
-            "Cantidad recibida",
-            "Inventario agregado",
-            "Cantidad vendida",
-            "Cantidad de dinero",
-            "Cantidad entregada",
-            "Faltantes",
-            "Sobrantes",
-        ])
-        self.tabla.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.tabla.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.tabla.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self.tabla.setAlternatingRowColors(True)
-        self.tabla.setRootIsDecorated(True)
-        self.tabla.setItemsExpandable(True)
-        self.tabla.setExpandsOnDoubleClick(False)
-        self.tabla.itemClicked.connect(self._alternar_turno)
-        self.tabla.setIndentation(24)
-        self.tabla.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        for columna in range(1, 8):
-            self.tabla.header().setSectionResizeMode(
-                columna, QHeaderView.ResizeMode.ResizeToContents
-            )
-        self.tabla.setMinimumHeight(360)
-        self.tabla.setStyleSheet("""
-            QTreeWidget {
-                background: #101725;
-                alternate-background-color: #182337;
-                color: #F4F2ED;
-                gridline-color: #42516A;
-                border: 1px solid #42516A;
-                border-radius: 8px;
-                font-size: 16px;
-            }
-            QHeaderView::section {
-                background: #233149;
-                color: #F2C66D;
-                border: 1px solid #42516A;
-                padding: 10px;
-                font-size: 15px;
-                font-weight: bold;
-            }
-        """)
-        layout.addWidget(self.tabla, 1)
+        self.contenedor_tarjetas = QWidget()
+        self.contenedor_tarjetas.setStyleSheet("background-color: #0B1020; border: none;")
+        self.lista_tarjetas = QVBoxLayout(self.contenedor_tarjetas)
+        self.lista_tarjetas.setContentsMargins(2, 4, 8, 4)
+        self.lista_tarjetas.setSpacing(12)
+        self.scroll = QScrollArea()
+        self.scroll.setWidgetResizable(True)
+        self.scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scroll.setStyleSheet("QScrollArea { background-color: #0B1020; border: none; }")
+        self.scroll.viewport().setStyleSheet("background-color: #0B1020; border: none;")
+        self.scroll.setWidget(self.contenedor_tarjetas)
+        layout.addWidget(self.scroll, 1)
+        self.detalle = None
 
-    def _alternar_turno(self, elemento, columna):
-        if elemento.parent() is None and elemento.childCount():
-            elemento.setExpanded(not elemento.isExpanded())
+    def _abrir_detalle(self, turno, filas):
+        """Abre una tabla modal dibujada dentro de la ventana principal."""
+        if self.detalle is not None:
+            self.detalle.close()
+        self.detalle = _DetalleHojaInventario(self.window(), turno, filas)
+        self.detalle.show()
+
+    def _vaciar_tarjetas(self):
+        while self.lista_tarjetas.count():
+            elemento = self.lista_tarjetas.takeAt(0)
+            widget = elemento.widget()
+            if widget is not None:
+                widget.deleteLater()
 
     def actualizar(self):
         try:
             filas = self.gestion.hoja_inventarios()
         except (ValueError, PermissionError, sqlite3.Error) as error:
             self.estado.setText(f"No se pudo cargar la hoja de inventarios: {error}")
-            self.tabla.clear()
-            self.tabla.setColumnCount(8)
-            self.tabla.setHeaderLabels([
-                "Productos",
-                "Cantidad recibida",
-                "Inventario agregado",
-                "Cantidad vendida",
-                "Cantidad de dinero",
-                "Cantidad entregada",
-                "Faltantes",
-                "Sobrantes",
-            ])
+            self._vaciar_tarjetas()
             return
 
         self.estado.clear()
-        self.tabla.clear()
-        self.tabla.setColumnCount(8)
-        self.tabla.setHeaderLabels([
-            "Productos",
-            "Cantidad recibida",
-            "Inventario agregado",
-            "Cantidad vendida",
-            "Cantidad de dinero",
-            "Cantidad entregada",
-            "Faltantes",
-            "Sobrantes",
-        ])
+        self._vaciar_tarjetas()
         turnos = {}
         for fila in filas:
             turnos.setdefault(fila["turno_id"], []).append(fila)
@@ -1815,41 +1871,161 @@ class PaginaHojaInventarios(QWidget):
                 "Pendiente de apertura" if primera["estado"] == "pendiente"
                 else "Turno en curso"
             )
-            encabezado = QTreeWidgetItem([
-                f'Cajero: {primera["cajero"]}  ·  '
-                f'Asignado: {primera["asignacion_fecha"] or "No disponible"}  ·  '
-                f'Cierre: {cierre}',
-                "",
-                "",
-                "",
-                "",
-                "",
-                "",
-                "",
-            ])
-            encabezado.setFirstColumnSpanned(True)
-            encabezado.setExpanded(False)
-            self.tabla.addTopLevelItem(encabezado)
-            for fila in filas_turno:
-                producto = QTreeWidgetItem([
-                    fila["producto"],
-                    str(fila["recibida"]),
-                    str(fila["agregada"]),
-                    str(fila["vendida"]),
-                    f'B/. {fila["dinero_centimos"] / 100:.2f}',
-                    str(fila["entregada"]) if fila["cierre_fecha"] else "Pendiente",
-                    str(fila["faltante"]) if fila["faltante"] is not None else "Pendiente",
-                    str(fila["sobrante"]) if fila["sobrante"] is not None else "Pendiente",
-                ])
-                for columna in range(1, 8):
-                    producto.setTextAlignment(
-                        columna, Qt.AlignmentFlag.AlignCenter
-                    )
-                encabezado.addChild(producto)
-        if not filas:
-            self.tabla.addTopLevelItem(
-                QTreeWidgetItem(["Todavía no hay turnos asignados."])
+            tarjeta = QFrame()
+            tarjeta.setObjectName("TarjetaTurnoHoja")
+            tarjeta.setFrameShape(QFrame.Shape.StyledPanel)
+            fila_tarjeta = QHBoxLayout(tarjeta)
+            fila_tarjeta.setContentsMargins(8, 4, 8, 4)
+            boton = QPushButton(
+                f'Cajero  ·  {primera["cajero"]}\n'
+                f'Asignado  ·  {primera["asignacion_fecha"] or "No disponible"}\n'
+                f'Cierre  ·  {cierre}     ›'
             )
+            boton.setObjectName("TurnoHoja")
+            boton.setMinimumHeight(100)
+            boton.setCursor(Qt.CursorShape.PointingHandCursor)
+            boton.clicked.connect(
+                lambda checked=False, t=primera.copy(), detalle=filas_turno.copy():
+                    self._abrir_detalle(t, detalle)
+            )
+            fila_tarjeta.addWidget(boton, 1)
+            estado = QLabel(primera["estado"].capitalize())
+            estado.setObjectName("EstadoTurnoHoja")
+            fila_tarjeta.addWidget(estado)
+            tarjeta.setCursor(Qt.CursorShape.PointingHandCursor)
+            tarjeta.mousePressEvent = lambda evento, b=boton: b.click()
+            self.lista_tarjetas.addWidget(tarjeta)
+        if not filas:
+            vacio = QLabel("Todavía no hay turnos asignados.")
+            vacio.setStyleSheet("color: #AABAD0; padding: 22px; font-size: 18px;")
+            self.lista_tarjetas.addWidget(vacio)
+        self.lista_tarjetas.addStretch(1)
+
+
+class _DetalleHojaInventario(QWidget):
+    """Ventana emergente integrada; bloquea solo el contenido de la aplicación."""
+    def __init__(self, parent, turno, filas):
+        super().__init__(parent)
+        self.ventana = parent
+        self.contenido = parent.centralWidget()
+        self.contenido_habilitado = self.contenido.isEnabled()
+        self.foco_anterior = QApplication.focusWidget()
+        self.setObjectName("DetalleHojaInventario")
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.setGeometry(parent.rect())
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setStyleSheet("""
+            QWidget#DetalleHojaInventario { background: rgba(3, 8, 17, 225); }
+            QFrame#TarjetaDetalleHoja { background: #111D2F; border: 1px solid #465064; border-radius: 20px; }
+            QLabel { color: #DCE4F0; background: transparent; }
+            QLabel#TituloDetalleHoja { color: #F2C66D; font-size: 25px; font-weight: bold; }
+            QTableWidget { background: #0B1525; alternate-background-color: #152136;
+                color: #F4F2ED; gridline-color: #29384E; border: 1px solid #29384E;
+                border-radius: 10px; font-size: 15px; }
+            QHeaderView::section { background: #233149; color: #F2C66D;
+                border: none; padding: 10px; font-weight: bold; }
+            QPushButton { background: #D6AE62; color: #101725; border: none;
+                border-radius: 9px; padding: 14px 24px; font-size: 16px; font-weight: bold; }
+            QPushButton:hover { background: #F2C66D; }
+        """)
+        exterior = QVBoxLayout(self)
+        exterior.setContentsMargins(24, 20, 24, 20)
+        exterior.addStretch(1)
+        tarjeta = QFrame()
+        tarjeta.setObjectName("TarjetaDetalleHoja")
+        tarjeta.setMaximumWidth(1500)
+        interior = QVBoxLayout(tarjeta)
+        interior.setContentsMargins(24, 20, 24, 22)
+        interior.setSpacing(12)
+        encabezado = QHBoxLayout()
+        titulos = QVBoxLayout()
+        titulo = QLabel(f"Turno de {turno['cajero']}")
+        titulo.setObjectName("TituloDetalleHoja")
+        titulos.addWidget(titulo)
+        subtitulo = QLabel(
+            f"Asignado: {turno['asignacion_fecha'] or 'No disponible'}    ·    "
+            f"Cierre: {turno['cierre_fecha'] or ('Pendiente de apertura' if turno['estado'] == 'pendiente' else 'Turno en curso')}"
+        )
+        subtitulo.setWordWrap(True)
+        titulos.addWidget(subtitulo)
+        encabezado.addLayout(titulos, 1)
+        estado = QLabel(turno["estado"].capitalize())
+        estado.setStyleSheet("color: #F2C66D; font-size: 15px; font-weight: bold;")
+        encabezado.addWidget(estado)
+        interior.addLayout(encabezado)
+        tabla = QTableWidget(len(filas), 8)
+        tabla.setHorizontalHeaderLabels([
+            "Producto", "Recibido", "Agregado", "Vendido", "Importe B/.",
+            "Entregado", "Faltantes", "Sobrantes",
+        ])
+        tabla.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        tabla.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        tabla.setAlternatingRowColors(True)
+        tabla.verticalHeader().hide()
+        tabla.setWordWrap(True)
+        tabla.setHorizontalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        tabla.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        tabla.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        for columna in range(1, 8):
+            tabla.horizontalHeader().setSectionResizeMode(columna, QHeaderView.ResizeMode.ResizeToContents)
+        for i, fila in enumerate(filas):
+            valores = [
+                fila["producto"], str(fila["recibida"]), str(fila["agregada"]),
+                str(fila["vendida"]), f'B/. {fila["dinero_centimos"] / 100:.2f}',
+                str(fila["entregada"]) if fila["cierre_fecha"] else "Pendiente",
+                str(fila["faltante"]) if fila["faltante"] is not None else "Pendiente",
+                str(fila["sobrante"]) if fila["sobrante"] is not None else "Pendiente",
+            ]
+            for j, valor in enumerate(valores):
+                celda = QTableWidgetItem(valor)
+                if j:
+                    celda.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                tabla.setItem(i, j, celda)
+            tabla.setRowHeight(i, 52)
+        tabla.setMinimumHeight(min(170, max(90, len(filas) * 52)))
+        tabla.setMaximumHeight(420)
+        interior.addWidget(tabla, 1)
+        cerrar = QPushButton("Cerrar detalle")
+        cerrar.setMinimumHeight(52)
+        cerrar.clicked.connect(self.close)
+        interior.addWidget(cerrar, 0, Qt.AlignmentFlag.AlignRight)
+        fila = QHBoxLayout()
+        fila.addStretch(1)
+        fila.addWidget(tarjeta, 12)
+        fila.addStretch(1)
+        exterior.addLayout(fila, 5)
+        exterior.addStretch(1)
+        self.ventana.installEventFilter(self)
+
+    def showEvent(self, evento):
+        self.contenido.setEnabled(False)
+        super().showEvent(evento)
+
+    def closeEvent(self, evento):
+        self.ventana.removeEventFilter(self)
+        self.contenido.setEnabled(self.contenido_habilitado)
+        foco = self.foco_anterior
+        if foco is not None and isValid(foco) and foco.isVisible():
+            foco.setFocus()
+        super().closeEvent(evento)
+
+    def eventFilter(self, objeto, evento):
+        if objeto is self.ventana:
+            if evento.type() == QEvent.Type.Resize:
+                self.setGeometry(self.ventana.rect())
+                self.raise_()
+            elif evento.type() == QEvent.Type.Close:
+                self.close()
+        return False
+
+    def resizeEvent(self, evento):
+        super().resizeEvent(evento)
+        if self.parentWidget():
+            self.setGeometry(self.parentWidget().rect())
+
+    def paintEvent(self, evento):
+        pintor = QPainter(self)
+        pintor.fillRect(self.rect(), QColor(3, 8, 17, 215))
 
 
 class PaginaHorarioTurnos(QWidget):

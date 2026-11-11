@@ -3,37 +3,62 @@ from collections import Counter
 import json
 import socket
 import sqlite3
-from PySide6.QtCore import QTimer, Qt
-from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-                               QPushButton, QLineEdit, QComboBox, QMessageBox, QListWidget, QListWidgetItem)
+from PySide6.QtCore import QPoint, QSettings, QTimer, Qt
+from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPainterPath, QPen
+from PySide6.QtWidgets import (QApplication, QComboBox, QDialog, QFrame, QHBoxLayout,
+                               QLabel, QLineEdit, QListWidget, QListWidgetItem,
+                               QMessageBox, QPushButton, QScrollArea, QVBoxLayout,
+                               QWidget)
 from pedidos_table import SolicitudesTable, ServidorTable
 from estilos import FORMULARIOS
 
 
+class DialogoPedidoMovil(QDialog):
+    def paintEvent(self, evento):
+        pintor = QPainter(self)
+        pintor.setRenderHint(QPainter.RenderHint.Antialiasing)
+        area = self.rect().adjusted(1, 1, -1, -1)
+        ruta = QPainterPath()
+        ruta.addRoundedRect(area, 22, 22)
+        degradado = QLinearGradient(area.topLeft(), area.bottomRight())
+        degradado.setColorAt(0, QColor(17, 28, 44, 225))
+        degradado.setColorAt(0.55, QColor(27, 42, 64, 230))
+        degradado.setColorAt(1, QColor(16, 25, 41, 225))
+        pintor.fillPath(ruta, degradado)
+        pintor.setPen(QPen(QColor('#D6AE62'), 2))
+        pintor.drawPath(ruta)
+
+    def keyPressEvent(self, evento):
+        if evento.key() == Qt.Key.Key_Escape:
+            evento.accept()
+            return
+        super().keyPressEvent(evento)
+
+
 class PaginaPedidosTable(QWidget):
-    def __init__(self, sesion, turnos, al_aceptar, boton):
+    def __init__(self, sesion, turnos, al_aceptar, boton, ventana):
         super().__init__()
         self.sesion, self.turnos = sesion, turnos
         self.al_aceptar, self.boton = al_aceptar, boton
+        self.ventana = ventana
         self.solicitudes = SolicitudesTable(sesion.ruta)
         self.servidor = ServidorTable(self.solicitudes, sesion.identificar)
+        self.ajustes_conexion = QSettings("Bakachi12", "Menu")
+        self.solicitud_actual = None
         self.setStyleSheet(FORMULARIOS)
+        self._crear_dialogo_pedido()
         layout = QVBoxLayout(self)
         titulo = QLabel('Pedidos pendientes')
         titulo.setStyleSheet('color: #F2C66D; font-size: 24px;')
         layout.addWidget(titulo)
-        self.configurar = QPushButton('Configuración')
-        self.configurar.setCheckable(True)
-        layout.addWidget(self.configurar)
-        self.panel = QWidget()
+        self.panel = QWidget(self)
+        self.panel.setStyleSheet(FORMULARIOS)
         opciones = QVBoxLayout(self.panel)
-        layout.addWidget(self.panel)
-        self.panel.hide()
-        self.configurar.toggled.connect(self.panel.setVisible)
+        opciones.addWidget(QLabel('Conexión de terminales móviles'))
         self.clave_nueva = ''
         self.ayuda = QLabel('Conecta los dispositivos del personal al mismo Wi-Fi de esta PC. '
-                            'Cada solicitud necesita la aprobación de un cajero con turno activo. '
-                            'Las notas se muestran aquí para que el cajero las atienda.')
+                            'Cada solicitud necesita la aprobación de una sesión habilitada para vender. '
+                            'Los pedidos nuevos aparecen en una ventana central para aceptar o rechazar.')
         self.ayuda.setWordWrap(True)
         opciones.addWidget(self.ayuda)
         self.ip = QLineEdit()
@@ -64,6 +89,10 @@ class PaginaPedidosTable(QWidget):
         revocar = QPushButton('Retirar acceso al dispositivo seleccionado')
         revocar.clicked.connect(self.revocar)
         opciones.addWidget(revocar)
+        self.estado_configuracion = QLabel()
+        self.estado_configuracion.setWordWrap(True)
+        self.estado_configuracion.setTextFormat(Qt.TextFormat.PlainText)
+        opciones.addWidget(self.estado_configuracion)
         self.cargar_terminales()
         self.lista = QListWidget()
         self.lista.setWordWrap(True)
@@ -84,6 +113,264 @@ class PaginaPedidosTable(QWidget):
         self.temporizador.setInterval(2500)
         self.temporizador.timeout.connect(self.actualizar)
         self.temporizador.start()
+        self.reintento_conexion = QTimer(self)
+        self.reintento_conexion.setInterval(5000)
+        self.reintento_conexion.timeout.connect(self._restaurar_conexion)
+        self.ajustes_conexion.sync()
+        if self.ajustes_conexion.status() != QSettings.Status.NoError:
+            self.estado_configuracion.setText(
+                "No se pudo leer la preferencia de conexión móvil."
+            )
+        elif self.ajustes_conexion.value("conexion_movil/activa", False, type=bool):
+            self._restaurar_conexion()
+
+    def _restaurar_conexion(self):
+        if not self.ajustes_conexion.value("conexion_movil/activa", False, type=bool):
+            self.reintento_conexion.stop()
+            return
+        try:
+            self.servidor.iniciar()
+        except OSError as error:
+            self.estado_configuracion.setText(
+                f"No se pudo restaurar la conexión móvil; se volverá a intentar "
+                f"en 5 segundos: {error}"
+            )
+            if not self.reintento_conexion.isActive():
+                self.reintento_conexion.start()
+        else:
+            self.reintento_conexion.stop()
+            self.activar.setText("Desactivar conexión móvil")
+            self.estado_configuracion.setText(
+                "Conexión móvil restaurada automáticamente."
+            )
+
+    def _guardar_preferencia_conexion(self, activa):
+        self.ajustes_conexion.setValue("conexion_movil/activa", activa)
+        self.ajustes_conexion.sync()
+        if self.ajustes_conexion.status() != QSettings.Status.NoError:
+            self.estado_configuracion.setText(
+                "La conexión cambió, pero no se pudo guardar la preferencia "
+                "para el próximo inicio."
+            )
+
+    def _crear_dialogo_pedido(self):
+        self.dialogo = DialogoPedidoMovil(
+            self.ventana,
+            Qt.WindowType.Dialog
+            | Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.WindowStaysOnTopHint,
+        )
+        self.dialogo.setObjectName('DialogoPedidoMovil')
+        self.dialogo.setWindowTitle('Pedido móvil nuevo')
+        self.dialogo.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.dialogo.setWindowModality(Qt.WindowModality.ApplicationModal)
+        self.dialogo.setStyleSheet("""
+            QDialog#DialogoPedidoMovil {
+                background: transparent;
+                border: none;
+            }
+            QFrame#TarjetaPedidoMovil {
+                background: rgba(25, 39, 59, 235);
+                border: 1px solid #435773;
+                border-radius: 16px;
+            }
+            QLabel {
+                background: transparent;
+                border: none;
+                color: #E5ECF5;
+                font-size: 18px;
+            }
+            QLabel#TituloPedidoMovil {
+                color: #FFD17C;
+                font-size: 26px;
+                font-weight: bold;
+            }
+            QLabel#DestinoPedidoMovil {
+                color: #FFF4DC;
+                font-size: 31px;
+                font-weight: bold;
+            }
+            QLabel#TotalPedidoMovil {
+                color: #FFD17C;
+                font-size: 34px;
+                font-weight: bold;
+            }
+            QLabel#ProductosPedidoMovil {
+                color: #F4F2ED;
+                font-size: 20px;
+            }
+            QLabel#EstadoPedidoMovil {
+                color: #FFCF88;
+                font-size: 16px;
+            }
+            QPushButton {
+                min-height: 66px;
+                border: 2px solid #51657F;
+                border-radius: 13px;
+                padding: 8px 18px;
+                background: #263951;
+                color: #F4F2ED;
+                font-size: 20px;
+                font-weight: bold;
+            }
+            QPushButton:hover { background: #354C68; }
+            QPushButton#AceptarPedidoMovil {
+                background: #E8B95E;
+                border-color: #FFD88F;
+                color: #152033;
+                font-size: 22px;
+            }
+            QPushButton#AceptarPedidoMovil:hover { background: #FFD17C; }
+            QPushButton#RechazarPedidoMovil {
+                background: #512E3A;
+                border-color: #86505A;
+            }
+            QPushButton#RechazarPedidoMovil:hover { background: #693B48; }
+        """)
+        exterior = QVBoxLayout(self.dialogo)
+        exterior.setContentsMargins(30, 26, 30, 26)
+        exterior.setSpacing(14)
+
+        titulo = QLabel('NUEVO PEDIDO DE TERMINAL MÓVIL')
+        titulo.setObjectName('TituloPedidoMovil')
+        exterior.addWidget(titulo)
+
+        tarjeta = QFrame()
+        tarjeta.setObjectName('TarjetaPedidoMovil')
+        contenido = QVBoxLayout(tarjeta)
+        contenido.setContentsMargins(22, 18, 22, 18)
+        contenido.setSpacing(10)
+
+        self.destino_pedido = QLabel()
+        self.destino_pedido.setObjectName('DestinoPedidoMovil')
+        self.destino_pedido.setWordWrap(True)
+        self.destino_pedido.setTextFormat(Qt.TextFormat.PlainText)
+        contenido.addWidget(self.destino_pedido)
+
+        self.cliente_pedido = QLabel()
+        self.cliente_pedido.setWordWrap(True)
+        self.cliente_pedido.setTextFormat(Qt.TextFormat.PlainText)
+        contenido.addWidget(self.cliente_pedido)
+
+        self.dispositivo_pedido = QLabel()
+        self.dispositivo_pedido.setWordWrap(True)
+        self.dispositivo_pedido.setTextFormat(Qt.TextFormat.PlainText)
+        contenido.addWidget(self.dispositivo_pedido)
+
+        self.productos_pedido = QLabel()
+        self.productos_pedido.setObjectName('ProductosPedidoMovil')
+        self.productos_pedido.setWordWrap(True)
+        self.productos_pedido.setTextFormat(Qt.TextFormat.PlainText)
+        self.productos_pedido.setAlignment(Qt.AlignmentFlag.AlignTop)
+        area_productos = QScrollArea()
+        area_productos.setWidgetResizable(True)
+        area_productos.setFrameShape(QFrame.Shape.NoFrame)
+        area_productos.setStyleSheet(
+            'QScrollArea { background: transparent; }'
+            'QScrollArea > QWidget > QWidget { background: transparent; }'
+        )
+        area_productos.setWidget(self.productos_pedido)
+        contenido.addWidget(area_productos, 1)
+
+        self.nota_pedido = QLabel()
+        self.nota_pedido.setWordWrap(True)
+        self.nota_pedido.setTextFormat(Qt.TextFormat.PlainText)
+        contenido.addWidget(self.nota_pedido)
+
+        exterior.addWidget(tarjeta, 1)
+        self.total_pedido = QLabel()
+        self.total_pedido.setObjectName('TotalPedidoMovil')
+        self.total_pedido.setAlignment(Qt.AlignmentFlag.AlignRight)
+        exterior.addWidget(self.total_pedido)
+
+        self.estado_pedido = QLabel()
+        self.estado_pedido.setObjectName('EstadoPedidoMovil')
+        self.estado_pedido.setWordWrap(True)
+        self.estado_pedido.setTextFormat(Qt.TextFormat.PlainText)
+        exterior.addWidget(self.estado_pedido)
+
+        acciones = QHBoxLayout()
+        acciones.setSpacing(14)
+        self.btn_rechazar_pedido = QPushButton('Rechazar pedido')
+        self.btn_rechazar_pedido.setObjectName('RechazarPedidoMovil')
+        self.btn_aceptar_pedido = QPushButton('Aceptar y añadir a la cuenta')
+        self.btn_aceptar_pedido.setObjectName('AceptarPedidoMovil')
+        self.btn_rechazar_pedido.clicked.connect(
+            lambda checked=False: self._resolver_pedido_actual(False)
+        )
+        self.btn_aceptar_pedido.clicked.connect(
+            lambda checked=False: self._resolver_pedido_actual(True)
+        )
+        acciones.addWidget(self.btn_rechazar_pedido)
+        acciones.addWidget(self.btn_aceptar_pedido, 1)
+        exterior.addLayout(acciones)
+
+        self.dialogo.resize(820, 700)
+        self.dialogo.hide()
+
+    def _mostrar_pedido(self, solicitud):
+        productos = json.loads(solicitud['productos'])
+        cantidades = Counter(
+            (producto['nombre'], producto['categoria']) for producto in productos
+        )
+        lineas = [
+            f'{cantidad} × {nombre} · {categoria}'
+            for (nombre, categoria), cantidad in cantidades.items()
+        ]
+        total = sum(round(producto['precio'] * 100) for producto in productos) / 100
+        self.destino_pedido.setText(f"Destino: {solicitud['mesa']}")
+        self.cliente_pedido.setText(
+            f"Cliente: {self._nombre_cliente(solicitud['cliente_id'])}"
+        )
+        emisor = solicitud['emisor'] or 'Sin usuario registrado'
+        self.dispositivo_pedido.setText(
+            f"Enviado desde: {solicitud['dispositivo']} · {emisor} · "
+            f"{solicitud['fecha']}"
+        )
+        self.productos_pedido.setText('\n'.join(lineas))
+        nota = solicitud['nota'].strip()
+        self.nota_pedido.setText(f"Nota: {nota}" if nota else 'Sin notas')
+        self.total_pedido.setText(f'Total del pedido: B/.{total:.2f}')
+        self.estado_pedido.clear()
+        self.solicitud_actual = solicitud['id']
+
+        pantalla = self.ventana.screen() or QApplication.primaryScreen()
+        if pantalla is not None:
+            limites = pantalla.availableGeometry()
+            ancho = min(820, limites.width() - 32)
+            alto = min(700, limites.height() - 32)
+            ancho = max(320, ancho)
+            alto = max(420, alto)
+            self.dialogo.resize(ancho, alto)
+            self.dialogo.move(
+                QPoint(
+                    limites.x() + (limites.width() - ancho) // 2,
+                    limites.y() + (limites.height() - alto) // 2,
+                )
+            )
+        self.dialogo.open()
+        self.dialogo.raise_()
+        self.dialogo.activateWindow()
+
+    def _mostrar_siguiente_pedido(self, pendientes):
+        if self.solicitud_actual or not pendientes or self.dialogo.isVisible():
+            return
+        if not self.ventana.isVisible() or self.ventana.isMinimized():
+            return
+        if QApplication.activeModalWidget() is not None:
+            return
+        try:
+            self.turnos.exigir_turno_activo()
+        except PermissionError:
+            return
+        self._mostrar_pedido(pendientes[0])
+
+    def _resolver_pedido_actual(self, aceptar):
+        if self.solicitud_actual is None:
+            return
+        self._resolver_identificador(
+            self.solicitud_actual, aceptar, desde_dialogo=True
+        )
 
     def cargar_terminales(self):
         self.terminales.clear()
@@ -93,7 +380,7 @@ class PaginaPedidosTable(QWidget):
     def generar(self):
         self.sesion.exigir_admin()
         if not self.servidor.http:
-            self.mensaje.setText('Activa primero la conexión móvil.')
+            self.estado_configuracion.setText('Activa primero la conexión móvil.')
             return
         self.clave_nueva = self.solicitudes.vincular(self.nombre.text())
         self.nombre.clear()
@@ -105,7 +392,7 @@ class PaginaPedidosTable(QWidget):
         identificador = self.terminales.currentData()
         if identificador is None:
             return
-        if QMessageBox.question(self, 'Retirar acceso', self.terminales.currentText() + ' perderá acceso. ¿Continuar?') != QMessageBox.StandardButton.Yes:
+        if QMessageBox.question(self.ventana, 'Retirar acceso', self.terminales.currentText() + ' perderá acceso. ¿Continuar?') != QMessageBox.StandardButton.Yes:
             return
         self.solicitudes.revocar(identificador)
         self.clave_nueva = ''
@@ -123,27 +410,31 @@ class PaginaPedidosTable(QWidget):
             self.sesion.exigir_admin()
             if self.servidor.http:
                 self.servidor.detener()
+                self.reintento_conexion.stop()
                 self.activar.setText('Activar conexión móvil')
+                self._guardar_preferencia_conexion(False)
             else:
                 self.servidor.iniciar()
+                self.reintento_conexion.stop()
                 self.activar.setText('Desactivar conexión móvil')
+                self._guardar_preferencia_conexion(True)
             self.actualizar_enlace()
-            self.mensaje.setText('Comparte el enlace solo con el personal. Usa una red privada de confianza; '
-                                 'no abras el puerto al Internet. Los dispositivos vinculados conservan su acceso.')
+            if self.ajustes_conexion.status() == QSettings.Status.NoError:
+                self.estado_configuracion.setText(
+                    'Comparte el enlace solo con el personal. Usa una red privada de confianza; '
+                    'no abras el puerto al Internet. Los dispositivos vinculados conservan su acceso.'
+                )
         except (PermissionError, OSError) as e:
-            self.mensaje.setText(f'No se pudo cambiar la conexión: {e}')
+            self.estado_configuracion.setText(f'No se pudo cambiar la conexión: {e}')
 
     def actualizar(self):
-        admin = self.sesion.es_admin()
-        self.configurar.setVisible(admin)
-        if not admin:
-            self.configurar.setChecked(False)
         if not self.sesion.usuario:
             self.lista.clear()
             return
         try:
             pendientes = self.solicitudes.listar()
             self.boton.setText(f'PedidosTable ({len(pendientes)})')
+            self._mostrar_siguiente_pedido(pendientes)
             if not self.isVisible():
                 return
             seleccion = self.lista.currentItem()
@@ -177,11 +468,26 @@ class PaginaPedidosTable(QWidget):
         if not item:
             self.mensaje.setText('Selecciona una solicitud.')
             return
+        self._resolver_identificador(item.data(Qt.ItemDataRole.UserRole), aceptar)
+
+    def _resolver_identificador(self, identificador, aceptar, desde_dialogo=False):
         try:
-            mesa, cuenta = self.solicitudes.resolver(item.data(Qt.ItemDataRole.UserRole), aceptar, self.sesion, self.turnos)
+            mesa, cuenta = self.solicitudes.resolver(
+                identificador, aceptar, self.sesion, self.turnos
+            )
             if aceptar:
                 self.al_aceptar(mesa, cuenta)
+            if desde_dialogo:
+                self.solicitud_actual = None
+                self.dialogo.hide()
+            self.mensaje.setText(
+                'Solicitud añadida a la cuenta.' if aceptar
+                else 'Solicitud rechazada.'
+            )
             self.actualizar()
-            self.mensaje.setText('Solicitud añadida a la cuenta.' if aceptar else 'Solicitud rechazada.')
+            if desde_dialogo:
+                QTimer.singleShot(0, self.actualizar)
         except (PermissionError, ValueError, sqlite3.Error) as e:
             self.mensaje.setText(str(e))
+            if desde_dialogo:
+                self.estado_pedido.setText(str(e))

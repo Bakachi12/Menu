@@ -114,7 +114,7 @@ class PaginaClientes(QWidget):
         self.setObjectName('PaginaClientes')
         self.setStyleSheet(ESTILO + '''
             QLineEdit { font-size: 18px; }
-            QListWidget { background: #0B1525; color: #F4F2ED; border: 1px solid #29374C;
+            QListWidget { background: rgba(11, 21, 37, 190); color: #F4F2ED; border: 1px solid #29374C;
                 border-radius: 12px; font-size: 18px; padding: 6px; }
             QListWidget::item { padding: 12px 16px; border-bottom: 1px solid #243147; border-radius: 8px; }
             QListWidget::item:selected { background: #293A52; color: #F2C66D; }

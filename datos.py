@@ -135,14 +135,39 @@ def registrar_venta(sesion, nombre_mesa, clientes, productos, turno_id=None, *, 
     """
     if sesion.usuario is None:
         raise PermissionError('Inicia sesión para cobrar.')
-    if turno_id is None and sesion.usuario['rol'] != 'admin':
+    es_venta_libre = sesion.usuario.get('tipo') == 'venta_libre'
+    if turno_id is None and sesion.usuario['rol'] != 'admin' and not es_venta_libre:
         raise PermissionError('Un usuario de caja necesita un turno activo para cobrar.')
+    if es_venta_libre and not sesion.inventario_libre_verificado:
+        raise PermissionError('Verifica el inventario antes de cobrar.')
     if metodo_pago not in METODOS_PAGO:
         raise ValueError('Selecciona un método de pago.')
     total = sum(centimos(p) for p in productos) / 100
     with sesion.conexion() as conexion:
         conexion.execute('BEGIN IMMEDIATE')
-        if turno_id is not None:
+        if es_venta_libre:
+            vendidos = {}
+            for producto in productos:
+                clave = (producto.get('id'), producto.get('nombre'), producto.get('categoria', 'General'))
+                vendidos[clave] = vendidos.get(clave, 0) + 1
+            for (producto_id, nombre, categoria), cantidad in vendidos.items():
+                if producto_id is None:
+                    fila = conexion.execute(
+                        'SELECT id FROM productos WHERE nombre = ? AND categoria = ?',
+                        (nombre, categoria),
+                    ).fetchone()
+                    producto_id = fila[0] if fila else None
+                stock = conexion.execute('SELECT cantidad FROM existencias_inventario WHERE producto_id = ?',
+                                         (producto_id,)).fetchone() if producto_id else None
+                if not stock or stock[0] < cantidad:
+                    raise ValueError(f'{nombre}: {cantidad} en el pedido y {stock[0] if stock else 0} disponibles. Vuelve al pedido para ajustar la cantidad.')
+                conexion.execute('UPDATE existencias_inventario SET cantidad = cantidad - ? WHERE producto_id = ?',
+                                 (cantidad, producto_id))
+                conexion.execute('''INSERT INTO movimientos_inventario
+                    (producto_id, producto_nombre, producto_categoria, tipo, cantidad, usuario_id, detalle)
+                    VALUES (?, ?, ?, 'venta_libre', ?, ?, 'Venta cobrada por el perfil Venta libre')''',
+                    (producto_id, nombre, categoria, cantidad, sesion.usuario['id']))
+        elif turno_id is not None:
             turno = conexion.execute(
                 'SELECT usuario_id, estado FROM turnos WHERE id = ?', (turno_id,)
             ).fetchone()

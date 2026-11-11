@@ -33,43 +33,55 @@
        <widget class="QFrame" name="PanelLateral">
         <property name="minimumSize">
          <size>
-          <width>180</width>
+          <width>232</width>
           <height>0</height>
          </size>
         </property>
         <property name="maximumSize">
          <size>
-          <width>220</width>
+          <width>272</width>
           <height>16777215</height>
          </size>
         </property>
         <property name="styleSheet">
          <string notr="true">
 QFrame#PanelLateral {
-    background-color: #0E1422;
-    border: 1px solid #202A3A;
+    background-color: rgba(11, 20, 35, 185);
+    border: 1px solid rgba(43, 58, 80, 210);
+    border-radius: 16px;
+}
+
+QFrame#PanelLateral QPushButton {
+    background-color: #172337;
+    color: #E8EDF5;
+    border: 1px solid #2A3A52;
     border-radius: 12px;
-}
-
-QPushButton {
-    background-color: #171F30;
-    color: #E8E7E2;
-    border: 1px solid #202B3E;
-    border-radius: 10px;
-    padding: 13px 14px;
+    min-height: 58px;
+    padding: 10px 14px;
     text-align: left;
-    font-size: 15px;
+    font-size: 17px;
+    font-weight: 600;
 }
 
-QPushButton:hover {
-    background-color: #263248;
-    color: #F2C66D;
-    border: 1px solid #D6A74C;
+QFrame#PanelLateral QPushButton:hover {
+    background-color: #22334B;
+    color: #FFD47D;
+    border: 1px solid #C99D50;
 }
 
-QPushButton:pressed {
-    background-color: #D6A74C;
-    color: #111827;
+QFrame#PanelLateral QPushButton:checked {
+    background-color: #293A53;
+    color: #FFE0A0;
+    border: 2px solid #D6AE62;
+}
+QFrame#PanelLateral QPushButton#btnCerrarSesion {
+    background-color: #382B35;
+    border-color: #654553;
+}
+QFrame#PanelLateral QPushButton#btnCerrarSesion:hover {
+    background-color: #4B3440;
+    border-color: #B76B72;
+    color: #FFE2DF;
 }
 </string>
         </property>
@@ -135,23 +147,6 @@ QPushButton:pressed {
               <verstretch>0</verstretch>
              </sizepolicy>
             </property>
-            <property name="styleSheet">
-             <string notr="true">
-QPushButton {
-    background-color: #414154;
-    color: white;
-    border: none;
-    border-radius: 8px;
-    padding: 12px;
-    font-size: 14px;
-}
-
-QPushButton:hover {
-    background-color: #D4AF37;
-    color: black;
-}
-</string>
-            </property>
             <property name="text">
              <string>Clientes</string>
             </property>
@@ -205,8 +200,8 @@ QPushButton:hover {
         <property name="styleSheet">
          <string notr="true">
 QFrame#PanelPrincipal {
-    background-color: #101725;
-    border: 1px solid #202A3A;
+    background-color: rgba(16, 23, 37, 205);
+    border: 1px solid rgba(32, 42, 58, 220);
     border-radius: 12px;
 }
 </string>
@@ -646,7 +641,7 @@ QPushButton:checked {
            <widget class="QWidget" name="PaginaPedido">
             <property name="styleSheet">
              <string notr="true">QWidget#PaginaPedido {
-    background-color: #292938;
+    background-color: rgba(11, 18, 32, 175);
 }</string>
             </property>
            </widget>

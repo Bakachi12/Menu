@@ -21,6 +21,7 @@ class SesionUsuarios:
         self.ruta = str(ruta)
         self.usuario = None
         self._autorizaciones_cierre = {}
+        self.inventario_libre_verificado = False
         with self.conexion() as db:
             db.execute('BEGIN IMMEDIATE')
             db.execute('''CREATE TABLE IF NOT EXISTS usuarios (
@@ -29,14 +30,25 @@ class SesionUsuarios:
                 clave_nombre TEXT NOT NULL UNIQUE,
                 sal BLOB NOT NULL, resumen BLOB NOT NULL,
                 iteraciones INTEGER NOT NULL,
-                rol TEXT NOT NULL CHECK(rol IN ('admin', 'mesas'))
+                rol TEXT NOT NULL CHECK(rol IN ('admin', 'mesas')),
+                tipo TEXT NOT NULL DEFAULT 'normal'
             )''')
             columnas = {fila[1] for fila in db.execute("PRAGMA table_info(usuarios)")}
             if "usuario" not in columnas:
                 db.execute("ALTER TABLE usuarios ADD COLUMN usuario TEXT")
             db.execute("UPDATE usuarios SET usuario = nombre WHERE usuario IS NULL")
+            if "tipo" not in columnas:
+                db.execute("ALTER TABLE usuarios ADD COLUMN tipo TEXT NOT NULL DEFAULT 'normal'")
+            db.execute(
+                "UPDATE usuarios SET rol = 'mesas', tipo = 'venta_libre' "
+                "WHERE clave_nombre = ?",
+                (self.clave('Ventalibre'),),
+            )
             if db.execute('SELECT COUNT(*) FROM usuarios').fetchone()[0] == 0:
                 self._insertar(db, 'Admin', 'Admin', 'Admin', 'admin')
+            if not db.execute('SELECT 1 FROM usuarios WHERE clave_nombre = ?',
+                              (self.clave('Ventalibre'),)).fetchone():
+                self._insertar(db, 'Venta libre', 'Ventalibre', 'admin', 'mesas', 'venta_libre')
 
     @contextmanager
     def conexion(self):
@@ -51,31 +63,49 @@ class SesionUsuarios:
     def clave(nombre):
         return unicodedata.normalize('NFKC', nombre).strip().casefold()
 
-    def _insertar(self, db, nombre, usuario, password, rol):
+    def _insertar(self, db, nombre, usuario, password, rol, tipo='normal'):
         sal = secrets.token_bytes(16)
         resumen = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), sal, self.ITERACIONES)
         db.execute('''INSERT INTO usuarios
-            (nombre, usuario, clave_nombre, sal, resumen, iteraciones, rol)
-            VALUES (?, ?, ?, ?, ?, ?, ?)''',
+            (nombre, usuario, clave_nombre, sal, resumen, iteraciones, rol, tipo)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
             (nombre.strip(), usuario.strip(), self.clave(usuario), sal, resumen,
-             self.ITERACIONES, rol))
+             self.ITERACIONES, rol, tipo))
 
     def iniciar(self, usuario, password):
         self.usuario = None
         self._autorizaciones_cierre.clear()
+        self.inventario_libre_verificado = False
         self.usuario = self.identificar(usuario, password)
         return self.usuario is not None
+
+    def restaurar(self, usuario_id):
+        """Restaura el perfil local guardado para reanudar una sesión en este equipo."""
+        self.cerrar()
+        if type(usuario_id) is not int or usuario_id <= 0:
+            return False
+        with self.conexion() as db:
+            fila = db.execute(
+                'SELECT id, nombre, usuario, rol, tipo FROM usuarios WHERE id = ?',
+                (usuario_id,),
+            ).fetchone()
+        if fila is None:
+            return False
+        self.usuario = dict(
+            id=fila[0], nombre=fila[1], usuario=fila[2], rol=fila[3], tipo=fila[4]
+        )
+        return True
 
     def identificar(self, usuario, password):
         """Verifica credenciales sin cambiar la sesión de la caja."""
         with self.conexion() as db:
-            fila = db.execute('''SELECT id, nombre, usuario, rol, sal, resumen, iteraciones
+            fila = db.execute('''SELECT id, nombre, usuario, rol, tipo, sal, resumen, iteraciones
                 FROM usuarios WHERE clave_nombre = ?''', (self.clave(usuario),)).fetchone()
         # También calcular para nombres desconocidos, sin indicar qué dato falló.
-        sal, esperado, vueltas = fila[4:] if fila else (b'\0' * 16, b'\0' * 32, self.ITERACIONES)
+        sal, esperado, vueltas = fila[5:] if fila else (b'\0' * 16, b'\0' * 32, self.ITERACIONES)
         obtenido = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), sal, vueltas)
         if fila and hmac.compare_digest(obtenido, esperado):
-            return dict(id=fila[0], nombre=fila[1], usuario=fila[2], rol=fila[3])
+            return dict(id=fila[0], nombre=fila[1], usuario=fila[2], rol=fila[3], tipo=fila[4])
         return None
 
     def validar_admin(self, password):
@@ -138,9 +168,13 @@ class SesionUsuarios:
     def cerrar(self):
         self.usuario = None
         self._autorizaciones_cierre.clear()
+        self.inventario_libre_verificado = False
 
     def es_admin(self):
         return self.usuario is not None and self.usuario['rol'] == 'admin'
+
+    def es_venta_libre(self):
+        return self.usuario is not None and self.usuario.get('tipo') == 'venta_libre'
 
     def exigir_admin(self):
         if not self.es_admin():
@@ -166,7 +200,7 @@ class SesionUsuarios:
         self.exigir_admin()
         with self.conexion() as db:
             return db.execute(
-                'SELECT nombre, usuario, rol FROM usuarios ORDER BY rol, nombre'
+                'SELECT nombre, usuario, rol, tipo FROM usuarios ORDER BY rol, nombre'
             ).fetchall()
 
     def actualizar_cuenta(self, usuario, actual, nueva=''):
@@ -211,7 +245,7 @@ class DialogoAcceso(FondoEspera):
         self.setObjectName('AccesoIntegrado')
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setStyleSheet(ESTILO + '''
-            QWidget#TarjetaAcceso { background: #111D2F; border: 1px solid #3C4653; border-radius: 20px; }
+            QWidget#TarjetaAcceso { background: rgba(17, 29, 47, 235); border: 1px solid #3C4653; border-radius: 20px; }
             QWidget#TarjetaAcceso QLineEdit { background: #0B1525; border: 1px solid #34445E;
                 border-radius: 9px; padding: 12px; font-size: 16px; }
             QWidget#TarjetaAcceso QLineEdit:focus { border: 1px solid #D6AE62; }
@@ -431,10 +465,11 @@ class PaginaUsuarios(QWidget):
     def actualizar(self):
         self.sesion.exigir_admin()
         self.lista.clear()
-        for nombre, usuario, rol in self.sesion.listar():
+        for nombre, usuario, rol, tipo in self.sesion.listar():
+            acceso = "Venta libre · Sin turno" if tipo == "venta_libre" else "Mesas y Clientes"
             self.lista.addItem(
                 f'{nombre}  ·  Usuario: {usuario}  ·  '
-                f'{"Acceso completo" if rol == "admin" else "Mesas y Clientes"}'
+                f'{"Acceso completo" if rol == "admin" else acceso}'
             )
 
     def guardar(self):
@@ -455,4 +490,3 @@ class PaginaUsuarios(QWidget):
             self.mensaje.setText('No se pudo guardar el usuario. Inténtalo de nuevo.')
         finally:
             self.crear.setEnabled(True)
-

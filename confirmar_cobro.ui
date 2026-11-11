@@ -1,161 +1,61 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
  <class>DialogCobro</class>
- <widget class="QDialog" name="DialogCobro">
-  <property name="geometry">
-   <rect>
-    <x>0</x>
-    <y>0</y>
-    <width>350</width>
-    <height>420</height>
-   </rect>
-  </property>
-  <property name="minimumSize">
-   <size>
-    <width>0</width>
-    <height>0</height>
-   </size>
-  </property>
-  <property name="maximumSize">
-   <size>
-    <width>16777215</width>
-    <height>16777215</height>
-   </size>
-  </property>
-  <property name="windowTitle">
-   <string>Confirmar cobro</string>
-  </property>
-  <property name="styleSheet">
-   <string notr="true">QDialog {
-    background-color: #292938;
-    color: white;
-}
-
-QLabel {
-    color: white;
-    font-size: 15px;
-}
-
-QPushButton {
-    background-color: #414154;
-    color: white;
-    border: none;
-    border-radius: 8px;
-    padding: 12px;
-}
-
-QPushButton:checked {background-color: #D4AF37; color: #161622; font-weight: bold;}
-QPushButton:hover {
-    background-color: #55556A;
-}</string>
-  </property>
-  <widget class="QWidget" name="layoutWidget">
-   <property name="geometry">
-    <rect>
-     <x>12</x>
-     <y>12</y>
-     <width>331</width>
-     <height>391</height>
-    </rect>
-   </property>
-   <layout class="QVBoxLayout" name="verticalLayout">
-    <item>
-     <widget class="QLabel" name="lblTituloCobro">
-      <property name="styleSheet">
-       <string notr="true">color: #FFFFFF;
-font-size: 23px;
-font-weight: bold;</string>
-      </property>
-      <property name="text">
-       <string>Confirmar cobro</string>
-      </property>
-     </widget>
-    </item>
-    <item>
-     <widget class="QLabel" name="lblMesaCobro">
-      <property name="styleSheet">
-       <string notr="true">color: #C8C8D4;
-font-size: 16px;</string>
-      </property>
-      <property name="text">
-       <string>Mesa 01</string>
-      </property>
-     </widget>
-    </item>
-    <item>
-     <widget class="QLabel" name="lblClienteCobro">
-      <property name="styleSheet">
-       <string notr="true">color: #C8C8D4;
-font-size: 16px;</string>
-      </property>
-      <property name="text">
-       <string>Cliente: Sin asignar</string>
-      </property>
-     </widget>
-    </item>
-    <item>
-     <widget class="QLabel" name="lblTotalCobro">
-      <property name="styleSheet">
-       <string notr="true">color: #D4AF37;
-font-size: 25px;
-font-weight: bold;</string>
-      </property>
-      <property name="text">
-       <string>Total: B/.0.00</string>
-      </property>
-     </widget>
-    </item>
-    <item><widget class="QLabel" name="lblPago"><property name="text"><string>Método de pago</string></property></widget></item>
-    <item><layout class="QGridLayout" name="opcionesPago">
-<item row="0" column="0"><widget class="QPushButton" name="pagoClave"><property name="text"><string>Clave</string></property><property name="checkable"><bool>true</bool></property></widget></item>
-<item row="0" column="1"><widget class="QPushButton" name="pagoVisa"><property name="text"><string>Visa</string></property><property name="checkable"><bool>true</bool></property></widget></item>
-<item row="1" column="0"><widget class="QPushButton" name="pagoYappy"><property name="text"><string>Yappy</string></property><property name="checkable"><bool>true</bool></property></widget></item>
-<item row="1" column="1"><widget class="QPushButton" name="pagoEfectivo"><property name="text"><string>Efectivo</string></property><property name="checkable"><bool>true</bool></property></widget></item>
-    </layout></item>
-    <item>
-     <widget class="QPushButton" name="btnConfirmarCobro">
-      <property name="styleSheet">
-       <string notr="true">QPushButton {
-    background-color: #D4AF37;
-    color: #20202B;
-    border-radius: 8px;
-    font-size: 15px;
-    font-weight: bold;
-    padding: 12px;
-}
-
-QPushButton:hover {
-    background-color: #E5C45A;
-}</string>
-      </property>
-      <property name="text">
-       <string>Confirmar</string>
-      </property>
-     </widget>
-    </item>
-    <item>
-     <widget class="QPushButton" name="btnCancelarCobro">
-      <property name="styleSheet">
-       <string notr="true">QPushButton {
-    background-color: #414154;
-    color: white;
-    border-radius: 8px;
-    font-size: 15px;
-    padding: 12px;
-}
-
-QPushButton:hover {
-    background-color: #55556A;
-}</string>
-      </property>
-      <property name="text">
-       <string>Cancelar</string>
-      </property>
-     </widget>
-    </item>
-   </layout>
-  </widget>
+ <widget class="QWidget" name="DialogCobro">
+ <property name="styleSheet"><string>QWidget#DialogCobro {background: qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #111c2c,stop:0.55 #17243a,stop:1 #101929); border: 2px solid #52647a; border-radius: 26px;}
+QFrame#resumen {background: qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #30435d,stop:1 #19283d); border:2px solid #687c96; border-radius:22px;}
+QLabel {background:transparent; color:#dce5f1; font-size:20px;}
+QLabel#lblPago {font-size:30px; font-weight:bold; color:#fff7e7;}
+QLabel#lblMesaCobro {font-size:32px; font-weight:bold; color:#fff7e7;}
+QLabel#lblClienteCobro {font-size:21px; color:#dce5f1;}
+QLabel#lblTotalCobro {font-size:52px; font-weight:bold; color:#ffd17c;}
+QLabel#estadoCobro {color:#ffdc98; font-size:19px;}
+QPushButton {min-height:78px; padding:8px 16px; border-radius:17px; border:2px solid #526782; background:#24354c; color:white; font-size:22px; font-weight:bold;}
+QPushButton:hover {background:#344a66; border-color:#9caec2;}
+QPushButton:checked {background:#55452b; border:3px solid #ffd17c; color:#ffe7b5;}
+QPushButton#btnConfirmarCobro {min-height:82px; background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #ffd47f,stop:1 #e5ae4d); border:2px solid #ffe2a8; color:#152033; font-size:24px;}
+QPushButton#btnConfirmarCobro:hover {background:#ffe0a0;}
+QPushButton#btnConfirmarCobro:disabled {background:#334154; border-color:#405169; color:#b7c2d0;}
+QPushButton#btnCancelarCobro {min-height:68px; background:#18263a; color:#e3ebf7;}
+QPushButton#btnCancelarCobro:hover {background:#263a54; border-color:#8a9db5;}
+</string></property>
+ <layout class="QHBoxLayout" name="paneles" stretch="5,6"><property name="leftMargin"><number>32</number></property><property name="rightMargin"><number>32</number></property><property name="topMargin"><number>32</number></property><property name="bottomMargin"><number>32</number></property><property name="spacing"><number>26</number></property>
+ <item><layout class="QVBoxLayout" name="opcionesPago">
+ <property name="spacing"><number>16</number></property>
+ <item><widget class="QLabel" name="lblPago">
+<property name="text"><string>Método de pago</string></property><property name="wordWrap"><bool>true</bool></property>
+</widget></item>
+ <item><widget class="QPushButton" name="pagoClave">
+<property name="text"><string>Clave</string></property><property name="checkable"><bool>true</bool></property>
+</widget></item>
+ <item><widget class="QPushButton" name="pagoVisa">
+<property name="text"><string>Visa</string></property><property name="checkable"><bool>true</bool></property>
+</widget></item>
+ <item><widget class="QPushButton" name="pagoYappy">
+<property name="text"><string>Yappy</string></property><property name="checkable"><bool>true</bool></property>
+</widget></item>
+ <item><widget class="QPushButton" name="pagoEfectivo">
+<property name="text"><string>Efectivo</string></property><property name="checkable"><bool>true</bool></property>
+</widget></item>
+ </layout></item>
+ <item><widget class="QFrame" name="resumen"><layout class="QVBoxLayout" name="cuenta"><property name="leftMargin"><number>30</number></property><property name="rightMargin"><number>30</number></property><property name="topMargin"><number>30</number></property><property name="bottomMargin"><number>30</number></property><property name="spacing"><number>18</number></property>
+ <item><widget class="QLabel" name="lblMesaCobro">
+<property name="text"><string>Cuenta</string></property><property name="wordWrap"><bool>true</bool></property>
+</widget></item><item><widget class="QLabel" name="lblClienteCobro">
+<property name="text"><string></string></property><property name="wordWrap"><bool>true</bool></property>
+</widget></item>
+ <item><widget class="QLabel" name="lblTotalCobro">
+<property name="text"><string></string></property><property name="wordWrap"><bool>true</bool></property>
+</widget></item><item><widget class="QLabel" name="estadoCobro">
+<property name="text"><string>Selecciona cómo paga el cliente.</string></property><property name="wordWrap"><bool>true</bool></property>
+</widget></item>
+ <item><widget class="QPushButton" name="btnConfirmarCobro">
+<property name="text"><string>Confirmar cobro</string></property>
+</widget></item><item><widget class="QPushButton" name="btnCancelarCobro">
+<property name="text"><string>Volver al pedido</string></property>
+</widget></item>
+ </layout></widget></item>
+ </layout>
  </widget>
- <resources/>
- <connections/>
+ <resources/><connections/>
 </ui>

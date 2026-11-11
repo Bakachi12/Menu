@@ -21,12 +21,12 @@
   </property>
   <property name="styleSheet">
    <string notr="true">QWidget#Form {
-    background-color: #0B1020;
+     background-color: rgba(11, 18, 32, 175);
     color: #F4F2ED;
 }
 
 QFrame#PanelProductos, QFrame#PanelCuenta {
-    background-color: #111827;
+    background-color: rgba(17, 24, 39, 205);
     border: 1px solid #273247;
     border-radius: 12px;
 }
@@ -67,7 +67,7 @@ QSplitter::handle {
       </property>
       <property name="styleSheet">
          <string notr="true">QFrame#PanelProductos {
-     background-color: #111827;
+     background-color: rgba(17, 24, 39, 205);
      border: 1px solid #273247;
      border-radius: 12px;
 }</string>
@@ -147,7 +147,7 @@ QSplitter::handle {
      <widget class="QFrame" name="PanelCuenta">
       <property name="styleSheet">
          <string notr="true">QFrame#PanelCuenta {
-     background-color: #111827;
+              background-color: rgba(17, 24, 39, 205);
      border: 1px solid #273247;
      border-radius: 12px;
 }</string>
@@ -200,7 +200,7 @@ QSplitter::handle {
 }
 
 QListWidget::item {
-    padding: 10px;
+    padding: 0px;
 }
 
 QListWidget::item:selected {

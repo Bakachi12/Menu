@@ -1,18 +1,31 @@
 """Pantalla de reposo del TPV; conserva la página y el pedido abiertos."""
+from pathlib import Path
+
 from PySide6.QtCore import QDateTime, QEvent, QObject, QTimer, Qt
-from PySide6.QtGui import QColor, QCursor, QKeySequence, QLinearGradient, QPainter, QPen, QShortcut
+from PySide6.QtGui import QColor, QCursor, QKeySequence, QLinearGradient, QPainter, QPen, QPixmap, QShortcut
 from PySide6.QtWidgets import QApplication, QLabel, QVBoxLayout, QWidget
 from shiboken6 import isValid
 
 
 class FondoEspera(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.fondo = QPixmap(str(Path(__file__).with_name("fondo_bar.png")))
+
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        fondo_opaco = self.fondo.isNull()
+        if fondo_opaco:
+            painter.fillRect(self.rect(), QColor("#080F1D"))
+        else:
+            painter.drawPixmap(self.rect(), self.fondo)
         fondo = QLinearGradient(0, 0, self.width(), self.height())
-        fondo.setColorAt(0, QColor("#080F1D"))
-        fondo.setColorAt(0.6, QColor("#152237"))
-        fondo.setColorAt(1, QColor("#0B1020"))
+        alpha = 255 if fondo_opaco else 175
+        fondo.setColorAt(0, QColor(8, 15, 29, alpha))
+        fondo.setColorAt(0.6, QColor(21, 34, 55, 255 if fondo_opaco else 185))
+        fondo.setColorAt(1, QColor(11, 16, 32, alpha))
         painter.fillRect(self.rect(), fondo)
         painter.setPen(QPen(QColor(228, 189, 118, 22), 1))
         radio = max(self.width(), self.height()) // 2
