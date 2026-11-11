@@ -154,7 +154,8 @@ class TestPedidosTable(unittest.TestCase):
         with patch.dict(sys.modules, mocks):
             spec.loader.exec_module(datos)
         id_ = self.servicio.enviar(self.datos())['id']
-        datos.registrar_venta(self.sesion, 'Mesa 01', 'Alberto', [dict(nombre='Café', precio=2.5)])
+        datos.inicializar_catalogo(self.sesion, [])
+        datos.registrar_venta(self.sesion, 'Mesa 01', 'Alberto', [dict(nombre='Café', precio=2.5)], metodo_pago='Clave')
         self.assertEqual(self.servicio.estado(id_)['estado'], 'rechazada')
         with self.assertRaises(ValueError):
             self.servicio.resolver(id_, True, self.sesion, self.turnos)

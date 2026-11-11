@@ -107,3 +107,9 @@ Para cerrar, se escribe la contraseña de Admin en la sección Cierre de turno, 
 En la PC, entra como Admin y abre **PedidosTable → Configuración → Activar conexión móvil**. Pulsa **Generar enlace para un dispositivo** y copia el enlace completo. En el celular, conectado al Wi-Fi del negocio, abre **PedidosTable**, pega el enlace en **Vincular con la caja** y toca **Guardar y conectar**. Inicia sesión con tu cuenta del TPV.
 
 Sigue la [guía de conexión de Windows y Android](PEDIDOS_TABLE.md) para instalar el APK, encontrar la IP de la PC, comprobar la conexión con un pedido y volver a vincular el equipo si cambia la clave.
+
+## Cobros por método de pago
+
+Al cobrar una mesa o una venta rápida, selecciona **Clave**, **Visa**, **Yappy** o **Efectivo** y pulsa **Confirmar**. Cancelar la confirmación conserva la cuenta abierta. El método identifica el pago recibido y queda registrado junto al cajero que confirmó el cobro.
+
+En **Mis cobros**, cada cajero puede consultar sus cuentas cobradas de todos sus turnos, de más reciente a más antigua, con fecha, cliente, mesa, total y método de pago. Los filtros de fecha y búsqueda también permiten localizar pagos por método. Admin conserva el historial general. Los cobros anteriores aparecen como **Sin registrar** en la columna Pago y solo se atribuyen a un cajero si la base conserva su turno.

@@ -3,7 +3,7 @@
 Guía: los datos están en datos.py; la cuenta y los botones en vista_pedidos.py;
 los colores compartidos en estilos.py. Consulta GUIA_DEL_PROYECTO.md.
 """
-from datos import preparar_archivo_datos, inicializar_catalogo, cargar_productos as leer_productos, registrar_venta
+from datos import preparar_archivo_datos, inicializar_catalogo, cargar_productos as leer_productos, registrar_venta, historial_cobros, METODOS_PAGO
 from inventario import (
     GestionTurnos, PaginaHojaInventarios, PaginaHorarioTurnos, PaginaInventario,
 )
@@ -119,7 +119,9 @@ if txt_buscar_historial is None:
 if tabla_historial is None:
     raise RuntimeError("No se encontró tablaHistorial")
 
-tabla_historial.setColumnCount(5)
+tabla_historial.setColumnCount(6)
+tabla_historial.setHorizontalHeaderLabels(['N.º', 'Fecha', 'Cliente', 'Mesa', 'Total', 'Pago'])
+tabla_historial.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
 tabla_historial.verticalHeader().setVisible(False)
 
 if pagina_historial is None:
@@ -237,7 +239,7 @@ def aplicar_filtros_historial():
     for fila in range(tabla_historial.rowCount()):
         coincide_texto = not texto
 
-        for columna in (0, 2, 3):
+        for columna in (0, 2, 3, 5):
             elemento = tabla_historial.item(fila, columna)
 
             if elemento and texto in elemento.text().casefold():
@@ -316,10 +318,10 @@ btn_historial_semana.clicked.connect(
 
 
 def abrir_historial():
-    if not requiere_admin():
+    if not sesion.usuario:
         return
     cargar_historial()
-    titulo_pagina.setText("Historial")
+    titulo_pagina.setText("Historial" if sesion.es_admin() else "Mis cobros")
     paginas.setCurrentWidget(pagina_historial)
 
 
@@ -507,14 +509,14 @@ def cargar_productos():
 
 productos = cargar_productos()
 
-def guardar_venta(nombre_mesa):
+def guardar_venta(nombre_mesa, metodo_pago):
     """Guarda el cobro completo antes de limpiar la cuenta de la pantalla."""
     gestion_clientes.autorizado()
     registrar_venta(sesion, nombre_mesa, nombres_clientes_cuenta(nombre_mesa),
-                   pedidos.get(nombre_mesa, []), gestion_turnos.turno_id_para_venta())
+                   pedidos.get(nombre_mesa, []), gestion_turnos.turno_id_para_venta(), metodo_pago=metodo_pago)
 
 
-def finalizar_cobro(nombre_mesa):
+def finalizar_cobro(nombre_mesa, metodo_pago):
     """Confirma la venta y libera la mesa; ante un error conserva su cuenta."""
     # Primero guardar la venta en SQLite
     if not pedidos.get(nombre_mesa):
@@ -525,8 +527,8 @@ def finalizar_cobro(nombre_mesa):
         return
 
     try:
-        guardar_venta(nombre_mesa)
-    except (sqlite3.Error, PermissionError) as error:
+        guardar_venta(nombre_mesa, metodo_pago)
+    except (sqlite3.Error, PermissionError, ValueError) as error:
         paginas.setCurrentWidget(pagina_pedido)
         avisar_pedido(nombre_mesa, f"No se pudo registrar el cobro: {error}")
         return
@@ -559,22 +561,10 @@ def finalizar_cobro(nombre_mesa):
 
 
 def cargar_historial():
-    if not requiere_admin():
-        return
     tabla_historial.setRowCount(0)
-
-    ruta_db = ruta_base_datos
-
-    if not ruta_db.exists():
-        actualizar_anios_historial([])
+    if not sesion.usuario:
         return
-
-    with sesion.conexion() as conexion:
-        ventas = conexion.execute("""
-            SELECT id, fecha, cliente, mesa, total
-            FROM ventas
-            ORDER BY id DESC
-        """).fetchall()
+    ventas = historial_cobros(sesion)
     actualizar_anios_historial(ventas)
 
     tabla_historial.setRowCount(len(ventas))
@@ -654,8 +644,15 @@ def cobrar_mesa(nombre_mesa):
     btn_cancelar.clicked.connect(
     lambda checked=False: paginas.setCurrentWidget(pagina_pedido)
 )
+    from PySide6.QtWidgets import QButtonGroup
+    metodos = QButtonGroup(dialogo)
+    btn_confirmar.setEnabled(False)
+    for metodo in METODOS_PAGO:
+        boton = dialogo.findChild(QPushButton, "pago" + metodo)
+        metodos.addButton(boton)
+    metodos.buttonClicked.connect(lambda _: btn_confirmar.setEnabled(True))
     btn_confirmar.clicked.connect(
-        lambda checked=False: finalizar_cobro(nombre_mesa)
+        lambda checked=False: finalizar_cobro(nombre_mesa, metodos.checkedButton().text())
     )
 
     paginas.setCurrentWidget(pagina_cobro)
@@ -1808,7 +1805,7 @@ btn_agregar_inventario_turno.clicked.connect(abrir_panel_inventario_agregado)
 btn_confirmar_inventario_agregado.clicked.connect(guardar_inventario_agregado)
 paginas_operacion = (
     pagina_inicio, pagina_mesas, pagina_pedido, pagina_cobro, pagina_clientes,
-    pagina_inventario,
+    pagina_inventario, pagina_historial,
 )
 
 def proteger_navegacion(indice):
@@ -1828,7 +1825,7 @@ def aplicar_permisos():
                 btn_menu_mesas, btn_menu_clientes, btn_menu_inventario
             ))
             or (not admin and (
-                boton is btn_menu_inventario
+                boton in (btn_menu_inventario, btn_menu_historial)
                 or (puede_operar and boton in (
                     btn_menu_inicio, btn_menu_mesas, btn_menu_clientes
                 ))
@@ -1854,10 +1851,12 @@ def aplicar_permisos():
         else "Venta de barra, sin asignar una mesa."
     )
     for pagina in (
-        pagina_historial, pagina_configuracion, pagina_productos, pagina_usuarios,
+        pagina_configuracion, pagina_productos, pagina_usuarios,
         pagina_config_mesas, pagina_mi_cuenta,
     ):
         pagina.setEnabled(admin)
+    btn_menu_historial.setText("Historial" if admin else "Mis cobros")
+    pagina_historial.setEnabled(sesion.usuario is not None)
     pagina_inventario.setEnabled(sesion.usuario is not None)
     pagina_hoja_inventarios.setEnabled(admin)
     pagina_horario_turnos.setEnabled(admin)
@@ -1949,4 +1948,3 @@ control_espera = ControlEspera(ventana, segundos=120)
 # Mostrar la aplicación
 ventana.showFullScreen()
 sys.exit(app.exec())
-

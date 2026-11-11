@@ -73,6 +73,10 @@ def inicializar_catalogo(sesion, productos_iniciales):
                 UNIQUE(nombre, categoria)
             )
         """)
+        columnas_ventas = {fila[1] for fila in conexion.execute('PRAGMA table_info(ventas)')}
+        for nombre, tipo in [('metodo_pago', 'TEXT'), ('cajero_id', 'INTEGER')]:
+            if nombre not in columnas_ventas:
+                conexion.execute(f'ALTER TABLE ventas ADD COLUMN {nombre} {tipo}')
         columnas = {
             fila[1]
             for fila in conexion.execute("PRAGMA table_info(productos)")
@@ -105,7 +109,25 @@ def cargar_productos(sesion):
     return [dict(nombre=n, precio=p / 100, categoria=c, imagen=i) for n, p, c, i in filas]
 
 
-def registrar_venta(sesion, nombre_mesa, clientes, productos, turno_id=None):
+METODOS_PAGO = ('Clave', 'Visa', 'Yappy', 'Efectivo')
+
+
+def historial_cobros(sesion):
+    """El alcance depende del usuario autenticado, incluso después de cerrar turno."""
+    if not sesion.usuario:
+        raise PermissionError('Inicia sesión para ver tus cobros.')
+    consulta = """SELECT v.id, v.fecha, v.cliente, v.mesa, v.total,
+                         COALESCE(v.metodo_pago, 'Sin registrar')
+                  FROM ventas v LEFT JOIN turnos t ON t.id = v.turno_id"""
+    parametros = ()
+    if not sesion.es_admin():
+        consulta += ' WHERE COALESCE(v.cajero_id, t.usuario_id) = ?'
+        parametros = (sesion.usuario['id'],)
+    with sesion.conexion() as db:
+        return db.execute(consulta + ' ORDER BY v.id DESC', parametros).fetchall()
+
+
+def registrar_venta(sesion, nombre_mesa, clientes, productos, turno_id=None, *, metodo_pago):
     """Cobro indivisible: registra venta, elimina pedido abierto y libera clientes.
 
     Si alguna escritura falla, SQLite revierte las tres operaciones.
@@ -115,6 +137,8 @@ def registrar_venta(sesion, nombre_mesa, clientes, productos, turno_id=None):
         raise PermissionError('Inicia sesión para cobrar.')
     if turno_id is None and sesion.usuario['rol'] != 'admin':
         raise PermissionError('Un usuario de caja necesita un turno activo para cobrar.')
+    if metodo_pago not in METODOS_PAGO:
+        raise ValueError('Selecciona un método de pago.')
     total = sum(centimos(p) for p in productos) / 100
     with sesion.conexion() as conexion:
         conexion.execute('BEGIN IMMEDIATE')
@@ -147,15 +171,15 @@ def registrar_venta(sesion, nombre_mesa, clientes, productos, turno_id=None):
                     INSERT INTO movimientos_inventario
                         (producto_id, producto_nombre, producto_categoria, tipo, cantidad,
                          usuario_id, turno_id, detalle)
-                    VALUES (?, ?, ?, 'venta', ?, ?, ?, 'Unidades vendidas en un cobro')
+                    VALUES (?, ?, ?, 'venta', ?, ?, ?, ?)
                 """, (
                     producto_id, nombre, categoria, cantidad,
-                    sesion.usuario['id'], turno_id,
+                    sesion.usuario['id'], turno_id, f'Cobro · {metodo_pago}',
                 ))
         conexion.execute(
-            'INSERT INTO ventas(fecha, mesa, cliente, productos, total, turno_id) VALUES (?, ?, ?, ?, ?, ?)',
+            'INSERT INTO ventas(fecha, mesa, cliente, productos, total, turno_id, metodo_pago, cajero_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
             (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), nombre_operacion(nombre_mesa), clientes,
-             json.dumps(productos, ensure_ascii=False), total, turno_id),
+             json.dumps(productos, ensure_ascii=False), total, turno_id, metodo_pago, sesion.usuario['id']),
         )
         conexion.execute('DELETE FROM pedidos_abiertos WHERE mesa = ?', (nombre_mesa,))
         conexion.execute('UPDATE clientes SET mesa = NULL WHERE mesa = ?', (nombre_mesa,))
@@ -164,4 +188,3 @@ def registrar_venta(sesion, nombre_mesa, clientes, productos, turno_id=None):
             conexion.execute("""UPDATE solicitudes_table SET estado = 'rechazada',
                 responsable_id = ?, resuelta = ? WHERE mesa = ? AND estado = 'pendiente'""",
                 (sesion.usuario['id'], datetime.now().isoformat(timespec='seconds'), nombre_mesa))
-
