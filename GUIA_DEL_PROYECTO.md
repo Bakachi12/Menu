@@ -99,3 +99,17 @@ Al iniciar sesión, el cajero asignado entra a Inventario y verifica físicament
 Para agregar existencias a un turno activo sin cambiar de sesión, el cajero pulsa “Agregar inventario a este turno” en Inicio. Admin autoriza cada entrega con su contraseña; se elige el producto y la cantidad en el formulario integrado. El programa registra la entrega vinculada al turno y la muestra en la columna “Inventario agregado” de la Hoja de inventarios. Al cierre, el conteo esperado es el inventario verificado al abrir más lo agregado durante el turno, menos las unidades vendidas; el resumen y la hoja registran las diferencias reales de faltantes/sobrantes.
 
 Para cerrar, se escribe la contraseña de Admin en la sección Cierre de turno, sin salir de la sesión del cajero. Tras autorizarla, se muestra el total de unidades vendidas; el usuario escribe el inventario final y confirma el cierre. Si no había un cajero asignado por horario, Admin puede elegir al siguiente cajero desde la misma pantalla de cierre, con las existencias disponibles preparadas para una asignación rápida; no necesita cerrar la sesión actual. Cuando la autorización se hace desde una sesión de cajero, el permiso para asignar se limita a ese cierre y expira a los 30 minutos. El resumen presenta los agregados, las ventas, el conteo final y los faltantes o sobrantes, sin mostrar los cálculos internos de esperado/diferencia. Las unidades finales regresan al inventario disponible para el siguiente cajero. Los campos numéricos grandes y el desplazamiento táctil están implementados en `PaginaInventario`; los datos de turnos y movimientos se gestionan en `GestionTurnos`.
+
+
+
+## Conectar la app de Android con la caja de Windows
+
+En la PC, entra como Admin y abre **PedidosTable → Configuración → Activar conexión móvil**. Pulsa **Generar enlace para un dispositivo** y copia el enlace completo. En el celular, conectado al Wi-Fi del negocio, abre **PedidosTable**, pega el enlace en **Vincular con la caja** y toca **Guardar y conectar**. Inicia sesión con tu cuenta del TPV.
+
+Sigue la [guía de conexión de Windows y Android](PEDIDOS_TABLE.md) para instalar el APK, encontrar la IP de la PC, comprobar la conexión con un pedido y volver a vincular el equipo si cambia la clave.
+
+## Cobros por método de pago
+
+Al cobrar una mesa o una venta rápida, selecciona **Clave**, **Visa**, **Yappy** o **Efectivo** y pulsa **Confirmar**. Cancelar la confirmación conserva la cuenta abierta. El método identifica el pago recibido y queda registrado junto al cajero que confirmó el cobro.
+
+En **Mis cobros**, cada cajero puede consultar sus cuentas cobradas de todos sus turnos, de más reciente a más antigua, con fecha, cliente, mesa, total y método de pago. Los filtros de fecha y búsqueda también permiten localizar pagos por método. Admin conserva el historial general. Los cobros anteriores aparecen como **Sin registrar** en la columna Pago y solo se atribuyen a un cajero si la base conserva su turno.

@@ -63,6 +63,11 @@ class SesionUsuarios:
     def iniciar(self, usuario, password):
         self.usuario = None
         self._autorizaciones_cierre.clear()
+        self.usuario = self.identificar(usuario, password)
+        return self.usuario is not None
+
+    def identificar(self, usuario, password):
+        """Verifica credenciales sin cambiar la sesión de la caja."""
         with self.conexion() as db:
             fila = db.execute('''SELECT id, nombre, usuario, rol, sal, resumen, iteraciones
                 FROM usuarios WHERE clave_nombre = ?''', (self.clave(usuario),)).fetchone()
@@ -70,9 +75,8 @@ class SesionUsuarios:
         sal, esperado, vueltas = fila[4:] if fila else (b'\0' * 16, b'\0' * 32, self.ITERACIONES)
         obtenido = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), sal, vueltas)
         if fila and hmac.compare_digest(obtenido, esperado):
-            self.usuario = dict(id=fila[0], nombre=fila[1], usuario=fila[2], rol=fila[3])
-            return True
-        return False
+            return dict(id=fila[0], nombre=fila[1], usuario=fila[2], rol=fila[3])
+        return None
 
     def validar_admin(self, password):
         """Comprueba una contraseña de Admin sin cambiar la sesión actual."""
@@ -451,3 +455,4 @@ class PaginaUsuarios(QWidget):
             self.mensaje.setText('No se pudo guardar el usuario. Inténtalo de nuevo.')
         finally:
             self.crear.setEnabled(True)
+

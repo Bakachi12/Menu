@@ -44,6 +44,7 @@ QPushButton {
     padding: 12px;
 }
 
+QPushButton:checked {background-color: #D4AF37; color: #161622; font-weight: bold;}
 QPushButton:hover {
     background-color: #55556A;
 }</string>
@@ -104,6 +105,13 @@ font-weight: bold;</string>
       </property>
      </widget>
     </item>
+    <item><widget class="QLabel" name="lblPago"><property name="text"><string>Método de pago</string></property></widget></item>
+    <item><layout class="QGridLayout" name="opcionesPago">
+<item row="0" column="0"><widget class="QPushButton" name="pagoClave"><property name="text"><string>Clave</string></property><property name="checkable"><bool>true</bool></property></widget></item>
+<item row="0" column="1"><widget class="QPushButton" name="pagoVisa"><property name="text"><string>Visa</string></property><property name="checkable"><bool>true</bool></property></widget></item>
+<item row="1" column="0"><widget class="QPushButton" name="pagoYappy"><property name="text"><string>Yappy</string></property><property name="checkable"><bool>true</bool></property></widget></item>
+<item row="1" column="1"><widget class="QPushButton" name="pagoEfectivo"><property name="text"><string>Efectivo</string></property><property name="checkable"><bool>true</bool></property></widget></item>
+    </layout></item>
     <item>
      <widget class="QPushButton" name="btnConfirmarCobro">
       <property name="styleSheet">
