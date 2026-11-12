@@ -56,4 +56,4 @@ def sincronizar_comandas(db, mesa, anteriores, actuales):
                 (unidad, mesa, p.get('cliente_nombre', ''), p['nombre'], p.get('preparacion', ''),
                  p.get('acompanamiento', ''), p.get('extra', '')))
     for unidad in anteriores_ids - actuales_ids:
-        db.execute("UPDATE ordenes_cocina SET estado='retirada' WHERE unidad=? AND estado='pendiente'", (unidad,))
+        db.execute("UPDATE ordenes_cocina SET estado='retirada' WHERE unidad=? AND estado IN ('pendiente','lista')", (unidad,))

@@ -21,8 +21,8 @@ label,input{display:block;width:100%}label{margin:14px 0 5px}input{background:#0
 <input id="usuario" autocomplete="username" required maxlength="128">
 <label for="password">Contraseña</label><input id="password" type="password" autocomplete="current-password" maxlength="128" required>
 <button id="entrar">Iniciar sesión</button> <button class="secundario" type="button" id="cambiar">Cambiar vínculo</button></form>
-<nav hidden id="perfil"><strong id="nombre"></strong><button class="secundario" id="salir">Cerrar sesión</button></nav>
-<section hidden id="cola"></section></main>
+<nav hidden id="perfil"><strong id="nombre"></strong><button id="historial" class="secundario">Rellamar orden</button><button class="secundario" id="salir">Cerrar sesión</button></nav>
+<section hidden id="cola"></section><button hidden id="mas" class="secundario">Ver anteriores</button><button hidden id="volver" class="secundario">Página anterior</button></main>
 <script>
 const el=id=>document.getElementById(id);
 const estado=el('estado'), cola=el('cola');
@@ -60,7 +60,7 @@ el('vincular').onsubmit=e=>{
 };
 el('cambiar').onclick=()=>{clave='';guardar('cocina-vinculo','');el('enlace').value='';modo('vincular');estado.textContent=''};
 function cerrar(){
-  token=''; ultimaCola='';cola.replaceChildren();el('nombre').textContent='';
+  token=''; historial=false; paginas=[null]; revision++; controles(); ultimaCola='';cola.replaceChildren();el('nombre').textContent='';
   el('password').value='';modo('acceso');
 }
 async function api(ruta,method='GET',datos){
@@ -88,16 +88,38 @@ el('salir').onclick=async()=>{
 function texto(padre,tipo,valor,clase=''){
   const n=document.createElement(tipo);n.className=clase;n.textContent=valor;padre.append(n);return n;
 }
-let ocupado=false, ultimaCola='';
-async function actualizar(listo){
-  if(ocupado||!token)return;
-  const sesion=token;
-  ocupado=true;
+let historial=false, paginas=[null], revision=0, consultando=false, cambiando=false, ultimaCola='';
+function controles(){
+  el('historial').textContent=historial?'Volver a pendientes':'Rellamar orden';
+  el('mas').hidden=true;el('volver').hidden=!historial||paginas.length===1;
+}
+function cambiarVista(){
+  revision++;ultimaCola='';cola.replaceChildren();controles();estado.textContent='Cargando…';actualizar();
+}
+el('historial').onclick=()=>{historial=!historial;paginas=[null];cambiarVista()};
+el('volver').onclick=()=>{paginas.pop();cambiarVista()};
+async function cambiarOrden(id,accion){
+  if(cambiando||!token)return;
+  cambiando=true;revision++;consultando=false;
   try{
-    if(listo)await api('/api/cocina/'+listo+'/lista','POST');
-    const ordenes=await api('/api/cocina');
-    if(sesion!==token)return;
-    estado.textContent=ordenes.length?'Pendientes: '+ordenes.length:'Sin órdenes pendientes';
+    await api('/api/cocina/'+id+'/'+accion,'POST');
+  }catch(e){estado.textContent=e.message;return}
+  finally{cambiando=false}
+  actualizar();
+}
+async function actualizar(){
+  if(!token||cambiando)return;
+  const turno=++revision;
+  consultando=true;
+  try{
+    const antes=paginas[paginas.length-1];
+    const datos=await api(historial?'/api/cocina/listas'+(antes?'?antes='+antes:''):'/api/cocina');
+    if(turno!==revision||!token)return;
+    const ordenes=historial?datos.ordenes:datos;
+    estado.textContent=historial?(ordenes.length?'Órdenes listas':'Sin órdenes listas en esta página'):
+      (ordenes.length?'Pendientes: '+ordenes.length:'Sin órdenes pendientes');
+    el('mas').hidden=!historial||!datos.hay_mas;
+    if(historial&&datos.hay_mas)el('mas').onclick=()=>{paginas.push(ordenes[ordenes.length-1].id);cambiarVista()};
     const contenido=JSON.stringify(ordenes);
     if(contenido===ultimaCola)return;
     const grupo=document.createDocumentFragment();
@@ -109,15 +131,16 @@ async function actualizar(listo){
       if(o.preparacion)texto(tarjeta,'p','Preparación: '+o.preparacion);
       if(o.acompanamiento)texto(tarjeta,'p','Acompañamiento: '+o.acompanamiento);
       if(o.extra)texto(tarjeta,'p','1 porción extra de '+o.extra,'extra');
-      const boton=texto(tarjeta,'button','Marcar lista');
-      boton.onclick=()=>actualizar(o.id);
+      const accion=historial?'rellamar':'lista';
+      const boton=texto(tarjeta,'button',historial?'Devolver a pendientes':'Marcar lista');
+      boton.onclick=()=>cambiarOrden(o.id,accion);
       grupo.append(tarjeta);
     }
     cola.replaceChildren(grupo);
     ultimaCola=contenido;
-  }catch(e){if(!token||sesion===token)estado.textContent=e.message}
-  finally{ocupado=false}
+  }catch(e){if(!token||turno===revision)estado.textContent=e.message}
+  finally{if(turno===revision)consultando=false}
 }
-setInterval(()=>actualizar(),2000);
+setInterval(()=>{if(!consultando&&!cambiando)actualizar()},2000);
 </script></body></html>
 '''.encode('utf-8')
