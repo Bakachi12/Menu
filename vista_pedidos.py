@@ -38,6 +38,7 @@ def crear_fila_producto(nombre, cantidad, subtotal, al_restar, al_sumar):
     etiqueta = QLabel(
         f"{cantidad} × {nombre}\nB/.{subtotal:.2f}"
     )
+    etiqueta.setTextFormat(Qt.TextFormat.PlainText)
     etiqueta.setMinimumWidth(0)
     etiqueta.setWordWrap(True)
 
@@ -46,6 +47,10 @@ def crear_fila_producto(nombre, cantidad, subtotal, al_restar, al_sumar):
         font-size: 13px;
         background: transparent;
     """)
+
+    layout.addWidget(etiqueta, 1)
+    if al_restar is None:
+        return fila
 
     boton_menos = QPushButton("−")
     boton_mas = QPushButton("+")
@@ -75,7 +80,6 @@ def crear_fila_producto(nombre, cantidad, subtotal, al_restar, al_sumar):
         }
     """)
 
-    layout.addWidget(etiqueta, 1)
     layout.addWidget(boton_menos)
     layout.addWidget(boton_mas)
 
@@ -159,7 +163,7 @@ class CabeceraCliente(QWidget):
 
 
 def dibujar_cuenta(lista_pedido, lbl_total, productos, clientes, cliente_activo, al_cambiar,
-                   al_retirar, al_seleccionar):
+                   al_retirar, al_seleccionar, *, detallada=False):
     lista_pedido.clear()
     grupos = {c['id']: {'nombre': c['nombre'], 'productos': []}
               for c in clientes}
@@ -205,7 +209,10 @@ def dibujar_cuenta(lista_pedido, lbl_total, productos, clientes, cliente_activo,
         for etiqueta in (nombre, importe):
             etiqueta.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
             contenido.addWidget(etiqueta)
-        tarjeta.clicked.connect(lambda checked=False, c=identificador: al_seleccionar(c))
+        if al_seleccionar:
+            tarjeta.clicked.connect(lambda checked=False, c=identificador: al_seleccionar(c))
+        else:
+            tarjeta.setCheckable(False)
         fila_cabecera.addWidget(tarjeta, 1)
         if identificador is not None and not grupo['productos'] and al_retirar:
             retirar = QPushButton('Retirar')
@@ -228,21 +235,34 @@ def dibujar_cuenta(lista_pedido, lbl_total, productos, clientes, cliente_activo,
         lista_pedido.addItem(item)
         lista_pedido.setItemWidget(item, cabecera)
         cantidades = {}
+        variantes = {}
         for producto in grupo['productos']:
-            clave = clave_producto(producto)
+            variante = clave_producto(producto)
+            clave = variante if detallada else variante[:3]
             cantidades[clave] = cantidades.get(clave, 0) + 1
+            variantes.setdefault(clave, set()).add(variante)
         if not cantidades:
             vacio = QListWidgetItem('Sin productos todavía')
             vacio.setSizeHint(QSize(0, 34))
             lista_pedido.addItem(vacio)
         for clave, cantidad in cantidades.items():
+            nombre = clave[0]
+            if detallada:
+                detalles = [f"B/.{clave[1] / 100:.2f} c/u"]
+                if clave[3]:
+                    detalles.append(f"Preparación: {clave[3]}")
+                if clave[4]:
+                    detalles.append(f"Acompañamiento: {clave[4]}")
+                nombre += "\n" + "\n".join(detalles)
+            variante = next(iter(variantes[clave]))
+            ajustar = len(variantes[clave]) == 1
             fila = crear_fila_producto(
-                clave[0], cantidad, cantidad * clave[1] / 100,
-                lambda checked=False, k=clave, c=identificador: al_cambiar(k, -1, c),
-                lambda checked=False, k=clave, c=identificador: al_cambiar(k, 1, c),
+                nombre, cantidad, cantidad * clave[1] / 100,
+                (lambda checked=False, k=variante, c=identificador: al_cambiar(k, -1, c)) if ajustar else None,
+                (lambda checked=False, k=variante, c=identificador: al_cambiar(k, 1, c)) if ajustar else None,
             )
             elemento = QListWidgetItem()
-            elemento.setSizeHint(QSize(0, 88))
+            elemento.setSizeHint(QSize(0, max(88, fila.sizeHint().height() + 12)))
             lista_pedido.addItem(elemento)
             lista_pedido.setItemWidget(elemento, fila)
     lbl_total.setText(f'Total mesa: B/.{total / 100:.2f}')
@@ -272,3 +292,47 @@ def dibujar_productos(area, productos, al_agregar):
         poner_imagen_producto(boton, producto)
         boton.clicked.connect(lambda checked=False, p=producto: al_agregar(p))
         cuadricula.addWidget(boton, numero // 2, numero % 2)
+
+
+def personalizar_plato(parent, producto, acompanamientos):
+    from PySide6.QtWidgets import QComboBox, QDialog
+    from cocina import opciones
+    from estilos import FORMULARIOS
+
+    dialogo = QDialog(parent)
+    dialogo.setWindowTitle(producto['nombre'])
+    dialogo.setStyleSheet(FORMULARIOS)
+    layout = QVBoxLayout(dialogo)
+    titulo = QLabel(producto['nombre'])
+    titulo.setTextFormat(Qt.TextFormat.PlainText)
+    layout.addWidget(titulo)
+
+    def selector(etiqueta, valores):
+        layout.addWidget(QLabel(etiqueta))
+        campo = QComboBox()
+        campo.setMinimumHeight(48)
+        campo.setPlaceholderText('Selecciona una opción')
+        campo.addItems(valores)
+        campo.setCurrentIndex(-1)
+        layout.addWidget(campo)
+        return campo
+
+    variantes = opciones(producto['preparaciones'])
+    preparacion = selector('Preparación', variantes) if variantes else None
+    lado = selector('Acompañamiento', acompanamientos)
+    lado.setEnabled(preparacion is None)
+    fila = QHBoxLayout()
+    cancelar = QPushButton('Cancelar')
+    agregar = QPushButton('Agregar al pedido')
+    agregar.setEnabled(False)
+    cancelar.clicked.connect(dialogo.reject)
+    agregar.clicked.connect(dialogo.accept)
+    if preparacion is not None:
+        preparacion.currentIndexChanged.connect(lambda indice: lado.setEnabled(indice >= 0))
+    lado.currentIndexChanged.connect(lambda indice: agregar.setEnabled(indice >= 0))
+    fila.addWidget(cancelar)
+    fila.addWidget(agregar)
+    layout.addLayout(fila)
+    if dialogo.exec() == QDialog.DialogCode.Accepted:
+        return dict(preparacion=preparacion.currentText() if preparacion else '',
+                    acompanamiento=lado.currentText())

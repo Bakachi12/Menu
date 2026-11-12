@@ -18,7 +18,8 @@ def centimos(producto):
 
 
 def clave_producto(producto):
-    return (producto['nombre'], centimos(producto), producto.get('categoria', ''))
+    return (producto['nombre'], centimos(producto), producto.get('categoria', ''),
+            producto.get('preparacion', ''), producto.get('acompanamiento', ''))
 
 
 class GestionClientes:

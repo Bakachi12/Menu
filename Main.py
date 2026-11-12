@@ -28,7 +28,8 @@ from datos import preparar_archivo_datos, inicializar_catalogo, cargar_productos
 from inventario import (
     GestionTurnos, PaginaHojaInventarios, PaginaHorarioTurnos, PaginaInventario,
 )
-from vista_pedidos import cargar_pantalla, dibujar_cuenta, dibujar_productos
+from cocina import BEBIDAS, COCINA, SECCIONES, acompanamientos
+from vista_pedidos import personalizar_plato, cargar_pantalla, dibujar_cuenta, dibujar_productos
 from estilos import HISTORIAL, CONFIGURACION, CATALOGO, TEMA
 
 import sqlite3
@@ -510,6 +511,12 @@ def agregar_producto(nombre_mesa, producto, lista_pedido, lbl_total):
         avisar_pedido(nombre_mesa, 'Selecciona un cliente asignado a esta mesa.')
         return
     nuevo = producto.copy()
+    if producto['seccion'] == COCINA:
+        seleccion = personalizar_plato(lista_pedido, producto, acompanamientos(productos))
+        if seleccion is None:
+            return
+        nuevo.update(seleccion)
+    nuevo.pop('preparaciones', None)
     nuevo['cliente_id'] = cliente_id
     nuevo['cliente_nombre'] = cliente['nombre'] if cliente else ''
     cuenta = list(pedidos.get(nombre_mesa, [])) + [nuevo]
@@ -536,8 +543,46 @@ def actualizar_clientes_pedido(nombre_mesa):
     actualizar_cuenta(nombre_mesa, pantalla.findChild(QListWidget, 'Listapedido'), pantalla.findChild(QLabel, 'lblTotal'))
 
 
+def ver_orden_detallada(mesa, pantalla):
+    from estilos import FORMULARIOS
+    detalle = QDialog(pantalla)
+    detalle.setWindowTitle(f"Orden detallada · {nombre_operacion(mesa)}")
+    detalle.setStyleSheet(FORMULARIOS)
+    detalle.resize(min(620, ventana.width()), min(640, ventana.height()))
+    layout = QVBoxLayout(detalle)
+    lista = QListWidget()
+    lista.setVerticalScrollMode(QListWidget.ScrollMode.ScrollPerPixel)
+    total = QLabel()
+    aviso = QLabel()
+    layout.addWidget(lista)
+    layout.addWidget(total)
+    layout.addWidget(aviso)
+    cerrar = QPushButton("Volver al pedido")
+    cerrar.clicked.connect(detalle.accept)
+    layout.addWidget(cerrar)
+
+    def ajustar(clave, cambio, cliente):
+        cambiar_cantidad(mesa, clave, cambio, pantalla.findChild(QListWidget, 'Listapedido'),
+                         pantalla.findChild(QLabel, 'lblTotal'), cliente)
+        aviso.setText(pantalla.findChild(QLabel, 'avisoClientes').text())
+        refrescar()
+
+    def refrescar():
+        posicion = lista.verticalScrollBar().value()
+        dibujar_cuenta(lista, total, pedidos.get(mesa, []), gestion_clientes.de_mesa(mesa),
+                       None, ajustar, None, None, detallada=True)
+        if mesa == VENTA_RAPIDA:
+            total.setText(total.text().replace('Total mesa:', 'Total:'))
+        lista.verticalScrollBar().setValue(posicion)
+
+    refrescar()
+    detalle.exec()
+
+
 def preparar_cuenta_pedido(nombre_mesa, pantalla):
     layout = pantalla.findChild(QFrame, 'PanelCuenta').layout()
+    pantalla.findChild(QPushButton, 'btnDetalle').clicked.connect(
+        lambda: ver_orden_detallada(nombre_mesa, pantalla))
     aviso = QLabel('')
     aviso.setObjectName('avisoClientes')
     aviso.setWordWrap(True)
@@ -756,15 +801,18 @@ def cobrar_mesa(nombre_mesa):
 
 def actualizar_botones_productos():
     """Actualiza el catálogo de todas las mesas que ya se abrieron."""
-    for nombre_mesa, pantalla in ventanas_pedido.items():
-        area = pantalla.findChild(QScrollArea, "AreaProductos")
-        lista = (pantalla.findChild(QListWidget, "Listapedido")
-                 or pantalla.findChild(QListWidget, "ListaPedido")
-                 or pantalla.findChild(QListWidget, "listapedido"))
-        total = pantalla.findChild(QLabel, "lblTotal")
-        dibujar_productos(area, productos,
-                          lambda producto, mesa=nombre_mesa, listado=lista, etiqueta=total:
-                          agregar_producto(mesa, producto, listado, etiqueta))
+    for mesa, pantalla in ventanas_pedido.items():
+        mostrar_menu_mesa(mesa, pantalla)
+
+
+def mostrar_menu_mesa(mesa, pantalla):
+    seccion = COCINA if pantalla.findChild(QPushButton, 'filtroCocina').isChecked() else BEBIDAS
+    visibles = [p for p in productos if p['seccion'] == seccion]
+    lista = pantalla.findChild(QListWidget, 'Listapedido')
+    total = pantalla.findChild(QLabel, 'lblTotal')
+    dibujar_productos(pantalla.findChild(QScrollArea, 'AreaProductos'), visibles,
+                      lambda producto: agregar_producto(mesa, producto, lista, total))
+
 
 def abrir_pedido(nombre_mesa):
     """Reutiliza la pantalla de cada mesa para conservar su estado."""
@@ -859,8 +907,15 @@ def abrir_pedido(nombre_mesa):
     if nombre_mesa not in pedidos:
         pedidos[nombre_mesa] = []
 
-    dibujar_productos(area_productos, productos,
-                      lambda producto: agregar_producto(nombre_mesa, producto, lista_pedido, lbl_total))
+    from PySide6.QtWidgets import QButtonGroup
+    filtros = QButtonGroup(pantalla_pedido)
+    for nombre in ('filtroBebidas', 'filtroCocina'):
+        boton = pantalla_pedido.findChild(QPushButton, nombre)
+        boton.setCheckable(True)
+        filtros.addButton(boton)
+        boton.setChecked(nombre == 'filtroBebidas')
+    filtros.buttonClicked.connect(lambda _: mostrar_menu_mesa(nombre_mesa, pantalla_pedido))
+    mostrar_menu_mesa(nombre_mesa, pantalla_pedido)
 
     # Ocultar el pedido anterior
     for pantalla in ventanas_pedido.values():
@@ -1172,7 +1227,7 @@ txt_precio_producto = QLineEdit()
 txt_precio_producto.setPlaceholderText("Ejemplo: 2.50")
 
 txt_categoria_producto = QLineEdit()
-txt_categoria_producto.setPlaceholderText("Ejemplo: Bebidas")
+txt_categoria_producto.setPlaceholderText("Bebidas, Cocina o Acompañamiento")
 
 btn_guardar_producto = QPushButton("Guardar")
 
@@ -1401,6 +1456,51 @@ def eliminar_producto():
     mensaje_producto.setText("Producto retirado del catálogo.")
 
 
+def configurar_menu_producto():
+    if not requiere_admin():
+        return
+    seleccionado = lista_catalogo.currentItem()
+    if seleccionado is None:
+        mensaje_producto.setText("Selecciona primero un producto del catálogo.")
+        return
+    identificador = seleccionado.data(Qt.ItemDataRole.UserRole)
+    producto = next((p for p in productos if p['id'] == identificador), None)
+    if producto is None:
+        actualizar_lista_catalogo()
+        return
+    from estilos import FORMULARIOS
+    dialogo = QDialog(ventana)
+    dialogo.setStyleSheet(FORMULARIOS)
+    dialogo.setWindowTitle(producto['nombre'])
+    layout = QVBoxLayout(dialogo)
+    layout.addWidget(QLabel("Mostrar en"))
+    seccion = QComboBox()
+    seccion.addItems(SECCIONES)
+    seccion.setCurrentText(producto['seccion'])
+    layout.addWidget(seccion)
+    layout.addWidget(QLabel("Preparaciones separadas por comas"))
+    variantes = QLineEdit(producto['preparaciones'])
+    variantes.setPlaceholderText("Ejemplo: Al ajillo, Fritos, En salsa roja")
+    variantes.setEnabled(seccion.currentText() == COCINA)
+    seccion.currentTextChanged.connect(lambda valor: variantes.setEnabled(valor == COCINA))
+    layout.addWidget(variantes)
+    guardar = QPushButton("Guardar")
+    guardar.clicked.connect(dialogo.accept)
+    layout.addWidget(guardar)
+    if dialogo.exec() != QDialog.DialogCode.Accepted:
+        return
+    try:
+        with sesion.conexion() as db:
+            db.execute("UPDATE productos SET seccion = ?, preparaciones = ? WHERE id = ?",
+                       (seccion.currentText(), variantes.text().strip(), identificador))
+    except sqlite3.Error as error:
+        mensaje_producto.setText(f"No se guardó la configuración: {error}")
+        return
+    productos[:] = cargar_productos()
+    actualizar_botones_productos()
+    mensaje_producto.setText(f"{producto['nombre']} · {seccion.currentText()}")
+
+
 btn_eliminar_producto.clicked.connect(eliminar_producto)
 # Diseño táctil de la pantalla de productos
 from PySide6.QtCore import QObject, QEvent
@@ -1467,7 +1567,7 @@ catalogo_tactil.setSpacing(12)
 titulo_catalogo = QLabel("Catálogo de productos")
 titulo_catalogo.setStyleSheet("font-size: 23px; font-weight: bold; color: #F2C66D;")
 catalogo_tactil.addWidget(titulo_catalogo)
-ayuda_catalogo = QLabel("Selecciona un producto para retirarlo del catálogo.")
+ayuda_catalogo = QLabel("Selecciona un producto para configurar su menú o retirarlo.")
 ayuda_catalogo.setWordWrap(True)
 catalogo_tactil.addWidget(ayuda_catalogo)
 lista_catalogo.setMinimumHeight(260)
@@ -1476,6 +1576,9 @@ lista_catalogo.setSpacing(4)
 lista_catalogo.setVerticalScrollMode(QListWidget.ScrollMode.ScrollPerPixel)
 catalogo_tactil.addWidget(lista_catalogo, 1)
 btn_eliminar_producto.setObjectName("EliminarProducto")
+btn_configurar_menu = QPushButton("Configurar menú y preparaciones")
+btn_configurar_menu.clicked.connect(configurar_menu_producto)
+catalogo_tactil.addWidget(btn_configurar_menu)
 catalogo_tactil.addWidget(btn_eliminar_producto)
 for boton_tactil in (btn_elegir_imagen, btn_guardar_producto, btn_eliminar_producto):
     boton_tactil.setMinimumHeight(60)

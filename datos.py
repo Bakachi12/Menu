@@ -11,6 +11,7 @@ import sqlite3
 import sys
 import json
 from PySide6.QtCore import QStandardPaths
+from cocina import seccion_inicial, preparaciones_iniciales
 from clientes import centimos, nombre_operacion
 
 def preparar_archivo_datos(carpeta):
@@ -92,6 +93,10 @@ def inicializar_catalogo(sesion, productos_iniciales):
                 ALTER TABLE productos
                 ADD COLUMN imagen TEXT
             """)
+        if "seccion" not in columnas:
+            conexion.execute("ALTER TABLE productos ADD COLUMN seccion TEXT")
+        if "preparaciones" not in columnas:
+            conexion.execute("ALTER TABLE productos ADD COLUMN preparaciones TEXT")
         for producto in productos_iniciales:
             conexion.execute(
                 "INSERT INTO productos(nombre, precio_centimos, categoria) VALUES (?, ?, ?) "
@@ -104,9 +109,13 @@ def cargar_productos(sesion):
     """Devuelve solo productos activos para los botones de las mesas."""
     with sesion.conexion() as conexion:
         filas = conexion.execute(
-            "SELECT nombre, precio_centimos, categoria, imagen FROM productos WHERE activo = 1 ORDER BY id"
+            "SELECT id, nombre, precio_centimos, categoria, imagen, seccion, preparaciones "
+            "FROM productos WHERE activo = 1 ORDER BY id"
         ).fetchall()
-    return [dict(nombre=n, precio=p / 100, categoria=c, imagen=i) for n, p, c, i in filas]
+    return [dict(id=identificador, nombre=n, precio=p / 100, categoria=c, imagen=i,
+                 seccion=seccion or seccion_inicial(n, c),
+                 preparaciones=preparaciones_iniciales(n) if prep is None else prep)
+            for identificador, n, p, c, i, seccion, prep in filas]
 
 
 METODOS_PAGO = ('Clave', 'Visa', 'Yappy', 'Efectivo')
