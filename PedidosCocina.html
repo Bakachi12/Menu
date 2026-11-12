@@ -20,7 +20,7 @@ label,input{display:block;width:100%}label{margin:14px 0 5px}input{background:#0
 <input id="usuario" autocomplete="username" required maxlength="128">
 <label for="password">Contraseña</label><input id="password" type="password" autocomplete="current-password" maxlength="128" required>
 <button id="entrar">Iniciar sesión</button> <button class="secundario" type="button" id="cambiar">Cambiar vínculo</button></form>
-<nav hidden id="perfil"><strong id="nombre"></strong><button id="historial" class="secundario">Rellamar orden</button><button class="secundario" id="salir">Cerrar sesión</button></nav>
+<nav hidden id="perfil"><strong id="nombre"></strong><button id="disponibilidad" class="secundario">Disponibilidad</button><button id="historial" class="secundario">Rellamar orden</button><button class="secundario" id="salir">Cerrar sesión</button></nav>
 <section hidden id="cola"></section><button hidden id="mas" class="secundario">Ver anteriores</button><button hidden id="volver" class="secundario">Página anterior</button></main>
 <script>
 const el=id=>document.getElementById(id);
@@ -59,7 +59,7 @@ el('vincular').onsubmit=e=>{
 };
 el('cambiar').onclick=()=>{clave='';guardar('cocina-vinculo','');el('enlace').value='';modo('vincular');estado.textContent=''};
 function cerrar(){
-  token=''; historial=false; paginas=[null]; revision++; controles(); ultimaCola='';cola.replaceChildren();el('nombre').textContent='';
+  token=''; disponibilidad=false;historial=false; paginas=[null]; revision++; controles(); ultimaCola='';cola.replaceChildren();el('nombre').textContent='';
   el('password').value='';modo('acceso');
 }
 async function api(ruta,method='GET',datos){
@@ -87,21 +87,23 @@ el('salir').onclick=async()=>{
 function texto(padre,tipo,valor,clase=''){
   const n=document.createElement(tipo);n.className=clase;n.textContent=valor;padre.append(n);return n;
 }
-let historial=false, paginas=[null], revision=0, consultando=false, cambiando=false, ultimaCola='';
+let disponibilidad=false, historial=false, paginas=[null], revision=0, consultando=false, cambiando=false, ultimaCola='';
 function controles(){
+  el('disponibilidad').textContent=disponibilidad?'Volver a pendientes':'Disponibilidad';
   el('historial').textContent=historial?'Volver a pendientes':'Rellamar orden';
   el('mas').hidden=true;el('volver').hidden=!historial||paginas.length===1;
 }
 function cambiarVista(){
   revision++;ultimaCola='';cola.replaceChildren();controles();estado.textContent='Cargando…';actualizar();
 }
-el('historial').onclick=()=>{historial=!historial;paginas=[null];cambiarVista()};
+el('disponibilidad').onclick=()=>{disponibilidad=!disponibilidad;historial=false;paginas=[null];cambiarVista()};
+el('historial').onclick=()=>{disponibilidad=false;historial=!historial;paginas=[null];cambiarVista()};
 el('volver').onclick=()=>{paginas.pop();cambiarVista()};
-async function cambiarOrden(id,accion){
+async function enviarCambio(ruta){
   if(cambiando||!token)return;
   cambiando=true;revision++;consultando=false;
   try{
-    await api('/api/cocina/'+id+'/'+accion,'POST');
+    await api(ruta,'POST');
   }catch(e){estado.textContent=e.message;return}
   finally{cambiando=false}
   actualizar();
@@ -112,10 +114,10 @@ async function actualizar(){
   consultando=true;
   try{
     const antes=paginas[paginas.length-1];
-    const datos=await api(historial?'/api/cocina/listas'+(antes?'?antes='+antes:''):'/api/cocina');
+    const datos=await api(disponibilidad?'/api/cocina/disponibilidad':historial?'/api/cocina/listas'+(antes?'?antes='+antes:''):'/api/cocina');
     if(turno!==revision||!token)return;
     const ordenes=historial?datos.ordenes:datos;
-    estado.textContent=historial?(ordenes.length?'Órdenes listas':'Sin órdenes listas en esta página'):
+    estado.textContent=disponibilidad?(ordenes.length?'Disponibilidad de platos':'Sin platos de cocina en el catálogo'):historial?(ordenes.length?'Órdenes listas':'Sin órdenes listas en esta página'):
       (ordenes.length?'Pendientes: '+ordenes.length:'Sin órdenes pendientes');
     el('mas').hidden=!historial||!datos.hay_mas;
     if(historial&&datos.hay_mas)el('mas').onclick=()=>{paginas.push(ordenes[ordenes.length-1].id);cambiarVista()};
@@ -124,6 +126,15 @@ async function actualizar(){
     const grupo=document.createDocumentFragment();
     for(const o of ordenes){
       const tarjeta=document.createElement('article');
+      if(disponibilidad){
+        texto(tarjeta,'small',o.categoria);
+        texto(tarjeta,'h2',o.nombre);
+        texto(tarjeta,'p',o.disponible?'Disponible':'No disponible',o.disponible?'':'extra');
+        const boton=texto(tarjeta,'button',o.disponible?'Marcar agotado':'Habilitar plato');
+        boton.onclick=()=>enviarCambio('/api/cocina/disponibilidad/'+o.id+'/'+(o.disponible?'agotado':'disponible'));
+        grupo.append(tarjeta);
+        continue;
+      }
       const hora=new Date(o.fecha).toLocaleTimeString('es-PA',{hour:'2-digit',minute:'2-digit'});
       texto(tarjeta,'small','#'+o.id+' · '+hora+' · '+o.mesa+(o.cliente?' · '+o.cliente:''));
       texto(tarjeta,'h2',o.plato);
@@ -132,7 +143,7 @@ async function actualizar(){
       if(o.extra)texto(tarjeta,'p','1 porción extra de '+o.extra,'extra');
       const accion=historial?'rellamar':'lista';
       const boton=texto(tarjeta,'button',historial?'Devolver a pendientes':'Marcar lista');
-      boton.onclick=()=>cambiarOrden(o.id,accion);
+      boton.onclick=()=>enviarCambio('/api/cocina/'+o.id+'/'+accion);
       grupo.append(tarjeta);
     }
     cola.replaceChildren(grupo);

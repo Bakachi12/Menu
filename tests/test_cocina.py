@@ -6,7 +6,7 @@ from tempfile import TemporaryDirectory
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from cocina import sincronizar_comandas
+from cocina import sincronizar_comandas, validar_aumentos
 from pedidos_table import ServidorTable, SolicitudesTable
 
 
@@ -74,6 +74,20 @@ class ColaCocina(unittest.TestCase):
         consultar('/api/cocina/logout', 'POST')
         denegada('/api/cocina')
         sesion = consultar('/api/cocina/login', 'POST', datos=perfil)['token']
+        with self.servicio.conexion() as db:
+            db.executescript("""CREATE TABLE productos(id INTEGER PRIMARY KEY, nombre TEXT, categoria TEXT, seccion TEXT, activo INTEGER);
+                INSERT INTO productos VALUES(4, 'Camarones', 'General', NULL, 1), (5, 'Café','Bebidas',NULL,1);""")
+        ruta = '/api/cocina/disponibilidad'
+        denegada(ruta+'/4/agotado', 'POST', token=self.servicio.vincular('Mesero'))
+        self.assertEqual([p['id'] for p in consultar(ruta)], [4])
+        consultar(ruta+'/4/agotado', 'POST')
+        self.assertFalse(consultar(ruta)[0]['disponible'])
+        with self.servicio.conexion() as db:
+            validar_aumentos(db, [self.yuca], [self.yuca])
+            with self.assertRaisesRegex(ValueError, 'No disponible'):
+                validar_aumentos(db, [self.yuca], [self.yuca, self.yuca])
+        consultar(ruta+'/4/disponible', 'POST')
+        self.assertTrue(consultar(ruta)[0]['disponible'])
         cola = consultar('/api/cocina')
         self.assertEqual([p['extra'] for p in cola], ['Yuca', ''])
         for _ in range(2):
