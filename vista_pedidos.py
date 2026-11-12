@@ -44,7 +44,7 @@ def crear_fila_producto(nombre, cantidad, subtotal, al_restar, al_sumar):
 
     etiqueta.setStyleSheet("""
         color: white;
-        font-size: 13px;
+        font-size: 15px;
         background: transparent;
     """)
 
@@ -55,8 +55,8 @@ def crear_fila_producto(nombre, cantidad, subtotal, al_restar, al_sumar):
     boton_menos = QPushButton("−")
     boton_mas = QPushButton("+")
 
-    boton_menos.setFixedSize(34, 34)
-    boton_mas.setFixedSize(34, 34)
+    boton_menos.setFixedSize(48, 48)
+    boton_mas.setFixedSize(48, 48)
 
     boton_menos.setStyleSheet("""
         QPushButton {
@@ -83,6 +83,8 @@ def crear_fila_producto(nombre, cantidad, subtotal, al_restar, al_sumar):
     layout.addWidget(boton_menos)
     layout.addWidget(boton_mas)
 
+    boton_menos.setAccessibleName(f"Quitar una unidad de {nombre}")
+    boton_mas.setAccessibleName(f"Añadir una unidad de {nombre}")
     boton_menos.clicked.connect(al_restar)
     boton_mas.clicked.connect(al_sumar)
 
@@ -224,7 +226,7 @@ def dibujar_cuenta(lista_pedido, lbl_total, productos, clientes, cliente_activo,
                     border: 1px solid #53647D; border-radius: 8px; padding: 8px 12px;
                     font-size: 14px; font-weight: bold; }
                 QPushButton#RetirarClienteMesa:hover { background: #46566B; border-color: #D6AE62; }
-                QPushButton#RetirarClienteMesa:pressed { background: #D6AE62; color: #101725; }
+                QPushButton#RetirarClienteMesa:pressed { background: #D6AE62; color: #132320; }
             ''')
             retirar.clicked.connect(
                 lambda checked=False, c=identificador: al_retirar(c)
@@ -272,25 +274,49 @@ def dibujar_cuenta(lista_pedido, lbl_total, productos, clientes, cliente_activo,
     lbl_total.setText(f'Total mesa: B/.{total / 100:.2f}')
 
 
+class RejillaProductos(QWidget):
+    """Redistribuye los botones existentes al girar o redimensionar la terminal."""
+    def __init__(self):
+        super().__init__()
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        self.botones = []
+        self.columnas = 0
+        layout = QGridLayout(self)
+        layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(10)
+
+    def distribuir(self):
+        columnas = max(1, min(4, (self.width() - 10) // 174))
+        if columnas != self.columnas:
+            self.columnas = columnas
+            for boton in self.botones:
+                self.layout().removeWidget(boton)
+            for i, boton in enumerate(self.botones):
+                self.layout().addWidget(boton, i // columnas, i % columnas)
+
+    def resizeEvent(self, evento):
+        super().resizeEvent(evento)
+        self.distribuir()
+
+
 def dibujar_productos(area, productos, al_agregar, agotados=()):
     """Único constructor del catálogo de botones, tanto al abrir como al actualizar."""
     contenedor = area.widget()
-    if contenedor is None:
-        contenedor = QWidget()
+    if not isinstance(contenedor, RejillaProductos):
+        contenedor = RejillaProductos()
         area.setWidget(contenedor)
     cuadricula = contenedor.layout()
-    if cuadricula is None:
-        cuadricula = QGridLayout(contenedor)
-        cuadricula.setSpacing(12)
-        cuadricula.setContentsMargins(15, 15, 15, 15)
+    contenedor.botones.clear()
+    contenedor.columnas = 0
     while cuadricula.count():
         boton = cuadricula.takeAt(0).widget()
         if boton is not None:
             boton.hide()
             boton.deleteLater()
-    for numero, producto in enumerate(productos):
+    for producto in productos:
         boton = QPushButton(f"{producto['nombre']}\nB/.{producto['precio']:.2f}")
-        boton.setMinimumSize(190, 130)
+        boton.setMinimumSize(120, 108)
         boton.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         boton.setStyleSheet(BOTON_PRODUCTO)
         if producto.get('id') in agotados:
@@ -300,7 +326,8 @@ def dibujar_productos(area, productos, al_agregar, agotados=()):
         else:
             poner_imagen_producto(boton, producto)
         boton.clicked.connect(lambda checked=False, p=producto: al_agregar(p))
-        cuadricula.addWidget(boton, numero // 2, numero % 2)
+        contenedor.botones.append(boton)
+    contenedor.distribuir()
 
 
 def personalizar_plato(parent, producto, acompanamientos, recargos):
@@ -353,6 +380,7 @@ def personalizar_plato(parent, producto, acompanamientos, recargos):
     lado.currentIndexChanged.connect(cambiar_lado)
     actualizar_importe()
     agregar = QPushButton('Aceptar')
+    agregar.setDefault(True)
     agregar.setEnabled(False)
     cancelar.clicked.connect(dialogo.reject)
     agregar.clicked.connect(dialogo.accept)

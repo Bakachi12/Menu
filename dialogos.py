@@ -19,10 +19,10 @@ class EditorNombreMesa(QWidget):
         self.setStyleSheet('''
             QWidget#TarjetaNombreMesa { background: #111D2F; border: 1px solid #465064; border-radius: 20px; }
             QLabel { color: #C1CDDF; background: transparent; border: none; font-size: 14px; }
-            QLineEdit { background: #0B1525; color: #F4F2ED; border: 1px solid #34445E;
+            QLineEdit { background: #0B1525; color: #F4F2ED; border: 1px solid #40594f;
                 border-radius: 9px; padding: 13px; font-size: 17px; }
             QLineEdit:focus { border: 1px solid #D6AE62; }
-            QPushButton { background: #D6AE62; color: #101725; border: none;
+            QPushButton { background: #D6AE62; color: #132320; border: none;
                 border-radius: 9px; padding: 14px; font-size: 16px; }
             QPushButton:hover { background: #F2C66D; }
             QPushButton#CancelarNombre { background: #233249; color: #E2E8F0; }

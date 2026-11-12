@@ -246,7 +246,7 @@ class DialogoAcceso(FondoEspera):
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setStyleSheet(ESTILO + '''
             QWidget#TarjetaAcceso { background: rgba(17, 29, 47, 235); border: 1px solid #3C4653; border-radius: 20px; }
-            QWidget#TarjetaAcceso QLineEdit { background: #0B1525; border: 1px solid #34445E;
+            QWidget#TarjetaAcceso QLineEdit { background: #0B1525; border: 1px solid #40594f;
                 border-radius: 9px; padding: 12px; font-size: 16px; }
             QWidget#TarjetaAcceso QLineEdit:focus { border: 1px solid #D6AE62; }
         ''')

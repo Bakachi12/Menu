@@ -115,7 +115,7 @@ class PaginaMiCuenta(QWidget):
         scroll.setStyleSheet('QScrollArea { border: none; background: transparent; }')
         contenido = QWidget()
         contenido.setObjectName('ContenidoCuenta')
-        contenido.setStyleSheet('QWidget#ContenidoCuenta { background: #101725; }')
+        contenido.setStyleSheet('QWidget#ContenidoCuenta { background: #132320; }')
         layout = QVBoxLayout(contenido)
         layout.setContentsMargins(24, 24, 24, 24)
         layout.setSpacing(14)

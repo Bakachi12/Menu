@@ -34,7 +34,7 @@ public class Principal extends Activity {
     private LinearLayout pantalla() {
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
-        layout.setBackgroundColor(Color.rgb(16, 23, 37));
+        layout.setBackgroundColor(Color.rgb(16, 30, 25));
         setContentView(layout);
         if (navegador != null) {
             navegador.stopLoading();
@@ -50,15 +50,24 @@ public class Principal extends Activity {
         layout.setPadding(margen, margen, margen, margen);
         TextView titulo = new TextView(this);
         titulo.setText("Vincular con la caja");
-        titulo.setTextSize(24);
+        titulo.setTextSize(28);
+        titulo.setTextColor(Color.rgb(246, 243, 232));
+        titulo.setPadding(0, margen, 0, margen);
         layout.addView(titulo);
         EditText enlace = new EditText(this);
         enlace.setSingleLine();
+        enlace.setTextColor(Color.WHITE);
+        enlace.setHintTextColor(Color.rgb(183, 203, 192));
+        enlace.setMinHeight(Math.round(54 * getResources().getDisplayMetrics().density));
         enlace.setHint("Pega el enlace de PedidosTable de la PC");
         enlace.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_URI);
         layout.addView(enlace);
         Button conectar = new Button(this);
         conectar.setText("Guardar y conectar");
+        conectar.setAllCaps(false);
+        conectar.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.rgb(242, 205, 132)));
+        conectar.setTextColor(Color.rgb(22, 36, 27));
+        conectar.setMinHeight(enlace.getMinHeight());
         layout.addView(conectar);
         conectar.setOnClickListener(v -> {
             String url = enlace.getText().toString().trim();
@@ -71,6 +80,8 @@ public class Principal extends Activity {
         });
         Button demo = new Button(this);
         demo.setText("Probar la demo");
+        demo.setAllCaps(false);
+        demo.setMinHeight(enlace.getMinHeight());
         layout.addView(demo);
         demo.setOnClickListener(v -> abrir(DEMO));
     }
