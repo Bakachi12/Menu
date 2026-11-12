@@ -41,6 +41,8 @@ QPushButton {
     font-weight: 600;
 }
 
+QPushButton:checked { background-color: #D6AE62; color: #101725; }
+
 QPushButton:hover {
     background-color: #28354A;
     color: #F2C66D;
@@ -97,26 +99,20 @@ QSplitter::handle {
        <item>
         <layout class="QHBoxLayout" name="horizontalLayout">
          <item>
-          <widget class="QPushButton" name="pushButton">
+          <widget class="QPushButton" name="filtroBebidas">
            <property name="text">
             <string>Bebidas</string>
            </property>
           </widget>
          </item>
          <item>
-          <widget class="QPushButton" name="pushButton_2">
+          <widget class="QPushButton" name="filtroCocina">
            <property name="text">
-            <string>Comidas</string>
+            <string>Cocina</string>
            </property>
           </widget>
          </item>
-         <item>
-          <widget class="QPushButton" name="pushButton_3">
-           <property name="text">
-            <string>Postres</string>
-           </property>
-          </widget>
-         </item>
+
         </layout>
        </item>
        <item>
@@ -207,6 +203,11 @@ QListWidget::item:selected {
     background-color: #2A3549;
 }</string>
          </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="btnDetalle">
+         <property name="text"><string>Ver orden detallada</string></property>
         </widget>
        </item>
        <item>

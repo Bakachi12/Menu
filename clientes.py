@@ -3,6 +3,7 @@ import json
 import sqlite3
 from PySide6.QtCore import Qt, QSize
 from PySide6.QtWidgets import QWidget, QLabel, QVBoxLayout, QHBoxLayout, QLineEdit, QListWidget, QListWidgetItem, QScroller, QPushButton, QAbstractItemView
+from cocina import preparar_cocina, sincronizar_comandas
 from estilos import FORMULARIOS as ESTILO
 
 # Identificador interno no imprimible: nunca coincide con el nombre de una mesa.
@@ -18,13 +19,16 @@ def centimos(producto):
 
 
 def clave_producto(producto):
-    return (producto['nombre'], centimos(producto), producto.get('categoria', ''))
+    return (producto['nombre'], centimos(producto), producto.get('categoria', ''),
+            producto.get('preparacion', ''), producto.get('acompanamiento', ''),
+            producto.get('extra', ''), producto.get('recargo_centimos', 0))
 
 
 class GestionClientes:
     def __init__(self, sesion):
         self.sesion = sesion
         with sesion.conexion() as db:
+            preparar_cocina(db)
             db.execute('''CREATE TABLE IF NOT EXISTS clientes (
                 id INTEGER PRIMARY KEY, nombre TEXT NOT NULL,
                 clave_nombre TEXT NOT NULL UNIQUE, mesa TEXT
@@ -100,6 +104,8 @@ class GestionClientes:
                 if cliente is not None and not db.execute(
                         'SELECT 1 FROM clientes WHERE id = ? AND mesa = ?', (cliente, mesa)).fetchone():
                     raise ValueError('El cliente seleccionado ya no está asignado a esta mesa.')
+            anterior = db.execute('SELECT productos FROM pedidos_abiertos WHERE mesa=?', (mesa,)).fetchone()
+            sincronizar_comandas(db, nombre_operacion(mesa), json.loads(anterior[0]) if anterior else [], productos)
             db.execute('''INSERT INTO pedidos_abiertos(mesa, productos) VALUES (?, ?)
                 ON CONFLICT(mesa) DO UPDATE SET productos = excluded.productos''',
                 (mesa, json.dumps(productos, ensure_ascii=False)))

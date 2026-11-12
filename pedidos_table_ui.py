@@ -55,6 +55,7 @@ class PaginaPedidosTable(QWidget):
         self.panel.setStyleSheet(FORMULARIOS)
         opciones = QVBoxLayout(self.panel)
         opciones.addWidget(QLabel('Conexión de terminales móviles'))
+        self.tipo_enlace = 'mesas'
         self.clave_nueva = ''
         self.ayuda = QLabel('Conecta los dispositivos del personal al mismo Wi-Fi de esta PC. '
                             'Cada solicitud necesita la aprobación de una sesión habilitada para vender. '
@@ -82,8 +83,11 @@ class PaginaPedidosTable(QWidget):
         self.nombre.setPlaceholderText('Nombre opcional, por ejemplo Tablet terraza')
         opciones.addWidget(self.nombre)
         crear = QPushButton('Generar enlace para un dispositivo')
-        crear.clicked.connect(self.generar)
+        crear.clicked.connect(lambda: self.generar("mesas"))
         opciones.addWidget(crear)
+        cocina = QPushButton("Generar enlace de PedidosCocina")
+        cocina.clicked.connect(lambda: self.generar("cocina"))
+        opciones.addWidget(cocina)
         self.terminales = QComboBox()
         opciones.addWidget(self.terminales)
         revocar = QPushButton('Retirar acceso al dispositivo seleccionado')
@@ -377,12 +381,14 @@ class PaginaPedidosTable(QWidget):
         for identificador, nombre in self.solicitudes.terminales():
             self.terminales.addItem(f'{nombre} (#{identificador})', identificador)
 
-    def generar(self):
+    def generar(self, tipo):
         self.sesion.exigir_admin()
         if not self.servidor.http:
             self.estado_configuracion.setText('Activa primero la conexión móvil.')
             return
-        self.clave_nueva = self.solicitudes.vincular(self.nombre.text())
+        self.tipo_enlace = tipo
+        nombre = self.nombre.text() or ("PedidosCocina" if tipo == "cocina" else "")
+        self.clave_nueva = self.solicitudes.vincular(nombre, tipo)
         self.nombre.clear()
         self.actualizar_enlace()
         self.cargar_terminales()
@@ -401,7 +407,8 @@ class PaginaPedidosTable(QWidget):
 
     def actualizar_enlace(self):
         if self.servidor.http and self.clave_nueva:
-            self.enlace.setText(f'http://{self.ip.text().strip()}:{self.servidor.http.server_port}/#{self.clave_nueva}')
+            ruta = '/cocina' if self.tipo_enlace == 'cocina' else '/'
+            self.enlace.setText(f'http://{self.ip.text().strip()}:{self.servidor.http.server_port}{ruta}#{self.clave_nueva}')
         else:
             self.enlace.clear()
 
