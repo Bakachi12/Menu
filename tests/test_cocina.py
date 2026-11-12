@@ -19,6 +19,10 @@ class ColaCocina(unittest.TestCase):
                          acompanamiento='Yuca', extra='Yuca', recargo_centimos=125)
         self.papas = dict(self.yuca, unidad_cocina='b', acompanamiento='Papas fritas', extra='')
 
+    def test_html_descargable_coincide_con_la_terminal(self):
+        from pedidos_cocina import PAGINA
+        self.assertEqual(PAGINA.decode(), (Path(__file__).resolve().parents[1] / "PedidosCocina.html").read_text(encoding="utf-8"))
+
     def test_rollback_reintento_resta_y_bebidas(self):
         cuenta = [self.yuca, self.papas, dict(nombre='Café')]
         with self.assertRaises(sqlite3.IntegrityError), self.servicio.conexion() as db:
@@ -35,17 +39,39 @@ class ColaCocina(unittest.TestCase):
     def test_cola_http_en_orden_y_terminal_revocada(self):
         with self.servicio.conexion() as db:
             sincronizar_comandas(db, 'Mesa 01', [], [self.yuca, self.papas])
-        servidor = ServidorTable(self.servicio, lambda *_: None)
+        def identificar(usuario, password):
+            return {'usuario': usuario} if (usuario, password) == ('turno', 'prueba') else None
+
+        servidor = ServidorTable(self.servicio, identificar)
         puerto = servidor.iniciar('127.0.0.1', 0)
         self.addCleanup(servidor.detener)
         clave = self.servicio.vincular('Pantalla', 'cocina')
 
-        def consultar(ruta, metodo='GET', token=clave):
+        sesion = ''
+
+        def consultar(ruta, metodo='GET', token=clave, datos=None):
             peticion = Request(f'http://127.0.0.1:{puerto}'+ruta,
-                               headers={'Authorization': 'Bearer '+token}, method=metodo)
+                               headers={'Authorization': 'Bearer '+token, 'X-Sesion': sesion,
+                                        'Content-Type': 'application/json'}, method=metodo,
+                               data=json.dumps(datos).encode() if datos else None)
             with urlopen(peticion, timeout=3) as respuesta:
                 return json.load(respuesta)
 
+        def denegada(ruta, metodo='GET', **opciones):
+            with self.assertRaises(HTTPError) as error:
+                consultar(ruta, metodo, **opciones)
+            self.assertEqual(error.exception.code, 401)
+
+        perfil = dict(usuario='turno', password='prueba')
+        denegada('/api/cocina')
+        denegada('/api/cocina/1/lista', 'POST')
+        denegada('/api/cocina/login', 'POST', datos=dict(usuario='turno', password='incorrecta'))
+        denegada('/api/login', 'POST', datos=perfil)
+        sesion = consultar('/api/cocina/login', 'POST', datos=perfil)['token']
+        denegada('/api/cocina', token=self.servicio.vincular('Otra cocina', 'cocina'))
+        consultar('/api/cocina/logout', 'POST')
+        denegada('/api/cocina')
+        sesion = consultar('/api/cocina/login', 'POST', datos=perfil)['token']
         cola = consultar('/api/cocina')
         self.assertEqual([p['extra'] for p in cola], ['Yuca', ''])
         for _ in range(2):

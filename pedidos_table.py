@@ -3,8 +3,8 @@
 Sin dependencia de Qt: cada operación usa su propia conexión SQLite. Los hilos
 HTTP nunca escriben cuentas, ventas ni inventario.
 """
-from cocina import preparar_cocina
 from pedidos_cocina import PAGINA as PAGINA_COCINA
+from cocina import preparar_cocina
 from contextlib import contextmanager
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -217,7 +217,7 @@ class ServidorTable:
                 self.end_headers()
                 self.wfile.write(contenido)
 
-            def autorizado(self):
+            def autorizado(self, tipo="mesas"):
                 token = self.headers.get('X-Sesion', '')
                 with bloqueo:
                     cuenta, caduca, terminal_id = sesiones.get(token, (None, 0, None))
@@ -225,7 +225,7 @@ class ServidorTable:
                         sesiones.pop(token, None)
                         return False
                     self.empleado = cuenta
-                return self.enlace_valido() and self.terminal[0] == terminal_id
+                return self.enlace_valido(tipo) and self.terminal[0] == terminal_id
 
             def enlace_valido(self, tipo="mesas"):
                 esquema, _, clave = self.headers.get('Authorization', '').partition(' ')
@@ -237,8 +237,8 @@ class ServidorTable:
                 if ruta == '/cocina':
                     return self.responder(200, PAGINA_COCINA, 'text/html; charset=utf-8')
                 if ruta == '/api/cocina':
-                    if not self.enlace_valido('cocina'):
-                        return self.responder(401, dict(error='Enlace de cocina requerido.'))
+                    if not self.autorizado('cocina'):
+                        return self.responder(401, dict(error='Vincula esta terminal e inicia sesión en cocina.'))
                     try:
                         with servicio.conexion() as db:
                             filas = db.execute("SELECT id,fecha,mesa,cliente,plato,preparacion,acompanamiento,extra "
@@ -276,8 +276,8 @@ class ServidorTable:
             def do_POST(self):
                 partes = urlsplit(self.path).path.strip('/').split('/')
                 if len(partes) == 4 and partes[:2] == ['api', 'cocina'] and partes[3] == 'lista':
-                    if not self.enlace_valido('cocina'):
-                        return self.responder(401, dict(error='Enlace de cocina requerido.'))
+                    if not self.autorizado('cocina'):
+                        return self.responder(401, dict(error='Vincula esta terminal e inicia sesión en cocina.'))
                     if not partes[2].isascii() or not partes[2].isdigit() or len(partes[2]) > 18:
                         return self.responder(400, dict(error='Orden inválida.'))
                     try:
@@ -287,10 +287,11 @@ class ServidorTable:
                         return self.responder(200, {})
                     except sqlite3.Error:
                         return self.responder(503, dict(error='No se pudo actualizar la orden.'))
-                login = self.path == '/api/login'
-                if not self.enlace_valido() or (not login and not self.autorizado()):
+                tipo = 'cocina' if self.path in ('/api/cocina/login', '/api/cocina/logout') else 'mesas'
+                login = self.path in ('/api/login', '/api/cocina/login')
+                if not (self.enlace_valido(tipo) if login else self.autorizado(tipo)):
                     return self.responder(401, dict(error='Inicia sesión con tu cuenta.'))
-                if self.path == '/api/logout':
+                if self.path in ('/api/logout', '/api/cocina/logout'):
                     with bloqueo:
                         sesiones.pop(self.headers.get('X-Sesion'), None)
                     return self.responder(200, {})
