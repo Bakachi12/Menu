@@ -3,6 +3,8 @@
 Sin dependencia de Qt: cada operación usa su propia conexión SQLite. Los hilos
 HTTP nunca escriben cuentas, ventas ni inventario.
 """
+from cocina import preparar_cocina
+from pedidos_cocina import PAGINA as PAGINA_COCINA
 from contextlib import contextmanager
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -31,6 +33,9 @@ class SolicitudesTable:
             db.execute("""CREATE TABLE IF NOT EXISTS terminales_table (
                 id INTEGER PRIMARY KEY AUTOINCREMENT, nombre TEXT NOT NULL, huella TEXT NOT NULL UNIQUE
             )""")
+            preparar_cocina(db)
+            if 'tipo' not in {r[1] for r in db.execute('PRAGMA table_info(terminales_table)')}:
+                db.execute("ALTER TABLE terminales_table ADD COLUMN tipo TEXT NOT NULL DEFAULT 'mesas'")
             columnas = {r[1] for r in db.execute('PRAGMA table_info(solicitudes_table)')}
             for campo, tipo in [('emisor_id', 'INTEGER'), ('emisor', 'TEXT')]:
                 if campo not in columnas:
@@ -46,11 +51,11 @@ class SolicitudesTable:
         finally:
             db.close()
 
-    def vincular(self, nombre):
+    def vincular(self, nombre, tipo="mesas"):
         clave = secrets.token_urlsafe(32)
         with self.conexion() as db:
-            cursor = db.execute("INSERT INTO terminales_table(nombre, huella) VALUES (?, ?)",
-                                (nombre.strip()[:60], hashlib.sha256(clave.encode()).hexdigest()))
+            cursor = db.execute("INSERT INTO terminales_table(nombre, huella, tipo) VALUES (?, ?, ?)",
+                                (nombre.strip()[:60], hashlib.sha256(clave.encode()).hexdigest(), tipo))
             identificador = cursor.lastrowid
             if not nombre.strip():
                 db.execute("UPDATE terminales_table SET nombre=? WHERE id=?",
@@ -67,7 +72,7 @@ class SolicitudesTable:
 
     def terminal(self, clave):
         with self.conexion() as db:
-            return db.execute("SELECT id,nombre FROM terminales_table WHERE huella=?",
+            return db.execute("SELECT id,nombre,tipo FROM terminales_table WHERE huella=?",
                               (hashlib.sha256(clave.encode()).hexdigest(),)).fetchone()
 
     def resumen(self, incluir_catalogo=True):
@@ -222,13 +227,26 @@ class ServidorTable:
                     self.empleado = cuenta
                 return self.enlace_valido() and self.terminal[0] == terminal_id
 
-            def enlace_valido(self):
+            def enlace_valido(self, tipo="mesas"):
                 esquema, _, clave = self.headers.get('Authorization', '').partition(' ')
                 self.terminal = servicio.terminal(clave) if esquema == 'Bearer' and clave else None
-                return self.terminal is not None
+                return self.terminal is not None and self.terminal[2] == tipo
 
             def do_GET(self):
                 ruta = urlsplit(self.path).path
+                if ruta == '/cocina':
+                    return self.responder(200, PAGINA_COCINA, 'text/html; charset=utf-8')
+                if ruta == '/api/cocina':
+                    if not self.enlace_valido('cocina'):
+                        return self.responder(401, dict(error='Enlace de cocina requerido.'))
+                    try:
+                        with servicio.conexion() as db:
+                            filas = db.execute("SELECT id,fecha,mesa,cliente,plato,preparacion,acompanamiento,extra "
+                                              "FROM ordenes_cocina WHERE estado='pendiente' ORDER BY id")
+                            ordenes = [dict(f) for f in filas]
+                        return self.responder(200, ordenes)
+                    except sqlite3.Error:
+                        return self.responder(503, dict(error='Cola no disponible.'))
                 if ruta == '/':
                     return self.responder(200, pagina, 'text/html; charset=utf-8')
                 if not self.autorizado():
@@ -256,6 +274,19 @@ class ServidorTable:
                     self.responder(503, dict(error='No se pudo leer. Inténtalo de nuevo.'))
 
             def do_POST(self):
+                partes = urlsplit(self.path).path.strip('/').split('/')
+                if len(partes) == 4 and partes[:2] == ['api', 'cocina'] and partes[3] == 'lista':
+                    if not self.enlace_valido('cocina'):
+                        return self.responder(401, dict(error='Enlace de cocina requerido.'))
+                    if not partes[2].isascii() or not partes[2].isdigit() or len(partes[2]) > 18:
+                        return self.responder(400, dict(error='Orden inválida.'))
+                    try:
+                        with servicio.conexion() as db:
+                            db.execute("UPDATE ordenes_cocina SET estado='lista' WHERE id=? AND estado='pendiente'",
+                                       (int(partes[2]),))
+                        return self.responder(200, {})
+                    except sqlite3.Error:
+                        return self.responder(503, dict(error='No se pudo actualizar la orden.'))
                 login = self.path == '/api/login'
                 if not self.enlace_valido() or (not login and not self.autorizado()):
                     return self.responder(401, dict(error='Inicia sesión con tu cuenta.'))

@@ -235,10 +235,12 @@ def dibujar_cuenta(lista_pedido, lbl_total, productos, clientes, cliente_activo,
         lista_pedido.addItem(item)
         lista_pedido.setItemWidget(item, cabecera)
         cantidades = {}
+        importes = {}
         variantes = {}
         for producto in grupo['productos']:
             variante = clave_producto(producto)
-            clave = variante if detallada else variante[:3]
+            clave = variante if detallada else (variante[0], variante[2])
+            importes[clave] = importes.get(clave, 0) + centimos(producto)
             cantidades[clave] = cantidades.get(clave, 0) + 1
             variantes.setdefault(clave, set()).add(variante)
         if not cantidades:
@@ -253,11 +255,13 @@ def dibujar_cuenta(lista_pedido, lbl_total, productos, clientes, cliente_activo,
                     detalles.append(f"Preparación: {clave[3]}")
                 if clave[4]:
                     detalles.append(f"Acompañamiento: {clave[4]}")
+                if clave[5]:
+                    detalles.append(f"Extra: {clave[5]} (+B/.{clave[6] / 100:.2f})")
                 nombre += "\n" + "\n".join(detalles)
             variante = next(iter(variantes[clave]))
             ajustar = len(variantes[clave]) == 1
             fila = crear_fila_producto(
-                nombre, cantidad, cantidad * clave[1] / 100,
+                nombre, cantidad, importes[clave] / 100,
                 (lambda checked=False, k=variante, c=identificador: al_cambiar(k, -1, c)) if ajustar else None,
                 (lambda checked=False, k=variante, c=identificador: al_cambiar(k, 1, c)) if ajustar else None,
             )
@@ -294,7 +298,7 @@ def dibujar_productos(area, productos, al_agregar):
         cuadricula.addWidget(boton, numero // 2, numero % 2)
 
 
-def personalizar_plato(parent, producto, acompanamientos):
+def personalizar_plato(parent, producto, acompanamientos, recargos):
     from PySide6.QtWidgets import QComboBox, QDialog
     from cocina import opciones
     from estilos import FORMULARIOS
@@ -323,7 +327,27 @@ def personalizar_plato(parent, producto, acompanamientos):
     lado.setEnabled(preparacion is None)
     fila = QHBoxLayout()
     cancelar = QPushButton('Cancelar')
-    agregar = QPushButton('Agregar al pedido')
+    extra = QPushButton('Añadir porción extra')
+    extra.setCheckable(True)
+    extra.setEnabled(False)
+    layout.addWidget(extra)
+    importe = QLabel()
+    layout.addWidget(importe)
+    def actualizar_importe():
+        adicional = recargos.get(lado.currentText(), 0) if extra.isChecked() else 0
+        importe.setText(f"Total del plato: B/.{(centimos(producto) + adicional) / 100:.2f}")
+    def cambiar_lado():
+        cargo = recargos.get(lado.currentText(), 0)
+        extra.setChecked(False)
+        extra.setEnabled(cargo > 0)
+        extra.setText(f"Porción extra de {lado.currentText()} (+B/.{cargo / 100:.2f})"
+                      if cargo else "Porción extra no disponible")
+        actualizar_importe()
+    extra.setStyleSheet('QPushButton:checked { background: #294f3e; color: white; }')
+    extra.toggled.connect(actualizar_importe)
+    lado.currentIndexChanged.connect(cambiar_lado)
+    actualizar_importe()
+    agregar = QPushButton('Aceptar')
     agregar.setEnabled(False)
     cancelar.clicked.connect(dialogo.reject)
     agregar.clicked.connect(dialogo.accept)
@@ -335,4 +359,6 @@ def personalizar_plato(parent, producto, acompanamientos):
     layout.addLayout(fila)
     if dialogo.exec() == QDialog.DialogCode.Accepted:
         return dict(preparacion=preparacion.currentText() if preparacion else '',
-                    acompanamiento=lado.currentText())
+                    acompanamiento=lado.currentText(),
+                    extra=lado.currentText() if extra.isChecked() else '',
+                    recargo_centimos=recargos[lado.currentText()] if extra.isChecked() else 0)

@@ -5,6 +5,7 @@ los colores compartidos en estilos.py. Consulta GUIA_DEL_PROYECTO.md.
 """
 import os
 import sys
+from uuid import uuid4
 from pathlib import Path
 
 # En el EXE, prioriza las DLL de Qt incluidas en Menu antes de importar PySide6.
@@ -480,7 +481,10 @@ def cambiar_cantidad(nombre_mesa, clave, cambio, lista_pedido, lbl_total, client
             if cambio == -1:
                 cuenta.pop(indice)
             elif cambio == 1:
-                cuenta.append(producto.copy())
+                copia = producto.copy()
+                if copia.get('seccion') == COCINA:
+                    copia['unidad_cocina'] = uuid4().hex
+                cuenta.append(copia)
             break
     guardar_cuenta_abierta(nombre_mesa, cuenta, lista_pedido, lbl_total)
 
@@ -512,10 +516,18 @@ def agregar_producto(nombre_mesa, producto, lista_pedido, lbl_total):
         return
     nuevo = producto.copy()
     if producto['seccion'] == COCINA:
-        seleccion = personalizar_plato(lista_pedido, producto, acompanamientos(productos))
+        try:
+            with sesion.conexion() as db:
+                recargos = dict(db.execute('SELECT nombre, centimos FROM recargos_acompanamiento'))
+        except sqlite3.Error as error:
+            avisar_pedido(nombre_mesa, f'No se pudieron leer los recargos: {error}')
+            return
+        seleccion = personalizar_plato(lista_pedido, producto, acompanamientos(productos), recargos)
         if seleccion is None:
             return
         nuevo.update(seleccion)
+        nuevo['unidad_cocina'] = uuid4().hex
+        nuevo['precio'] = (centimos(producto) + seleccion['recargo_centimos']) / 100
     nuevo.pop('preparaciones', None)
     nuevo['cliente_id'] = cliente_id
     nuevo['cliente_nombre'] = cliente['nombre'] if cliente else ''
@@ -1501,6 +1513,51 @@ def configurar_menu_producto():
     mensaje_producto.setText(f"{producto['nombre']} · {seccion.currentText()}")
 
 
+def configurar_recargo_extra():
+    if not requiere_admin():
+        return
+    from PySide6.QtWidgets import QDoubleSpinBox
+    from estilos import FORMULARIOS
+    dialogo = QDialog(ventana)
+    dialogo.setWindowTitle("Recargo por porción extra")
+    dialogo.setStyleSheet(FORMULARIOS)
+    layout = QVBoxLayout(dialogo)
+    lado = QComboBox()
+    lado.addItems(acompanamientos(productos))
+    importe = QDoubleSpinBox()
+    importe.setRange(0, 999999.99)
+    importe.setDecimals(2)
+    importe.setPrefix("B/. ")
+    layout.addWidget(QLabel("Acompañamiento"))
+    layout.addWidget(lado)
+    layout.addWidget(QLabel("Precio de una porción extra (0 desactiva el extra)"))
+    layout.addWidget(importe)
+    guardar = QPushButton("Guardar recargo")
+    guardar.clicked.connect(dialogo.accept)
+    layout.addWidget(guardar)
+    try:
+        with sesion.conexion() as db:
+            precios = dict(db.execute("SELECT nombre, centimos FROM recargos_acompanamiento"))
+        def cargar(nombre):
+            importe.setValue(precios.get(nombre, 0) / 100)
+        lado.currentTextChanged.connect(cargar)
+        cargar(lado.currentText())
+        if dialogo.exec() != QDialog.DialogCode.Accepted:
+            return
+        valor = round(importe.value() * 100)
+        with sesion.conexion() as db:
+            if valor:
+                db.execute("INSERT INTO recargos_acompanamiento VALUES (?,?) "
+                           "ON CONFLICT(nombre) DO UPDATE SET centimos=excluded.centimos",
+                           (lado.currentText(), valor))
+            else:
+                db.execute("DELETE FROM recargos_acompanamiento WHERE nombre=?", (lado.currentText(),))
+    except sqlite3.Error as error:
+        mensaje_producto.setText(f"No se guardó el recargo: {error}")
+        return
+    mensaje_producto.setText(f"{lado.currentText()} · Extra B/.{valor / 100:.2f}")
+
+
 btn_eliminar_producto.clicked.connect(eliminar_producto)
 # Diseño táctil de la pantalla de productos
 from PySide6.QtCore import QObject, QEvent
@@ -1579,6 +1636,9 @@ btn_eliminar_producto.setObjectName("EliminarProducto")
 btn_configurar_menu = QPushButton("Configurar menú y preparaciones")
 btn_configurar_menu.clicked.connect(configurar_menu_producto)
 catalogo_tactil.addWidget(btn_configurar_menu)
+btn_recargos = QPushButton("Recargo por acompañamiento extra")
+btn_recargos.clicked.connect(configurar_recargo_extra)
+catalogo_tactil.addWidget(btn_recargos)
 catalogo_tactil.addWidget(btn_eliminar_producto)
 for boton_tactil in (btn_elegir_imagen, btn_guardar_producto, btn_eliminar_producto):
     boton_tactil.setMinimumHeight(60)
