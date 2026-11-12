@@ -46,7 +46,7 @@ from PySide6.QtWidgets import QComboBox, QHeaderView, QTableWidget, QTableWidget
 from PySide6.QtWidgets import QFrame, QApplication, QGridLayout, QVBoxLayout, QStackedWidget, QPushButton, QSizePolicy, QLineEdit, QWidget, QLabel, QScrollArea, QListWidget, QHBoxLayout, QListWidgetItem
 
 from PySide6.QtWidgets import QMessageBox
-from PySide6.QtCore import Qt, QRegularExpression, QSettings
+from PySide6.QtCore import Qt, QRegularExpression, QSettings, QTimer
 from PySide6.QtGui import QIntValidator, QRegularExpressionValidator
 app = QApplication(sys.argv)
 app.setStyleSheet(TEMA)
@@ -817,13 +817,39 @@ def actualizar_botones_productos():
         mostrar_menu_mesa(mesa, pantalla)
 
 
+def leer_agotados():
+    with sesion.conexion() as db:
+        return {fila[0] for fila in db.execute('SELECT producto_id FROM platos_agotados')}
+
+
+agotados = leer_agotados()
+
+
+def actualizar_disponibilidad():
+    global agotados
+    if not ventanas_pedido:
+        return
+    try:
+        nuevos = leer_agotados()
+    except sqlite3.Error:
+        return
+    if nuevos != agotados:
+        agotados = nuevos
+        actualizar_botones_productos()
+
+
+reloj_disponibilidad = QTimer(ventana)
+reloj_disponibilidad.timeout.connect(actualizar_disponibilidad)
+reloj_disponibilidad.start(2000)
+
+
 def mostrar_menu_mesa(mesa, pantalla):
     seccion = COCINA if pantalla.findChild(QPushButton, 'filtroCocina').isChecked() else BEBIDAS
     visibles = [p for p in productos if p['seccion'] == seccion]
     lista = pantalla.findChild(QListWidget, 'Listapedido')
     total = pantalla.findChild(QLabel, 'lblTotal')
     dibujar_productos(pantalla.findChild(QScrollArea, 'AreaProductos'), visibles,
-                      lambda producto: agregar_producto(mesa, producto, lista, total))
+                      lambda producto: agregar_producto(mesa, producto, lista, total), agotados)
 
 
 def abrir_pedido(nombre_mesa):
@@ -1505,6 +1531,8 @@ def configurar_menu_producto():
         with sesion.conexion() as db:
             db.execute("UPDATE productos SET seccion = ?, preparaciones = ? WHERE id = ?",
                        (seccion.currentText(), variantes.text().strip(), identificador))
+            if seccion.currentText() != COCINA:
+                db.execute("DELETE FROM platos_agotados WHERE producto_id=?", (identificador,))
     except sqlite3.Error as error:
         mensaje_producto.setText(f"No se guardó la configuración: {error}")
         return

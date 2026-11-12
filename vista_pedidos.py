@@ -272,7 +272,7 @@ def dibujar_cuenta(lista_pedido, lbl_total, productos, clientes, cliente_activo,
     lbl_total.setText(f'Total mesa: B/.{total / 100:.2f}')
 
 
-def dibujar_productos(area, productos, al_agregar):
+def dibujar_productos(area, productos, al_agregar, agotados=()):
     """Único constructor del catálogo de botones, tanto al abrir como al actualizar."""
     contenedor = area.widget()
     if contenedor is None:
@@ -293,7 +293,12 @@ def dibujar_productos(area, productos, al_agregar):
         boton.setMinimumSize(190, 130)
         boton.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         boton.setStyleSheet(BOTON_PRODUCTO)
-        poner_imagen_producto(boton, producto)
+        if producto.get('id') in agotados:
+            boton.setText(f"{producto['nombre']}\nNo disponible")
+            boton.setEnabled(False)
+            boton.setStyleSheet(BOTON_PRODUCTO + "QPushButton:disabled { color: #edb694; background: #26272b; }")
+        else:
+            poner_imagen_producto(boton, producto)
         boton.clicked.connect(lambda checked=False, p=producto: al_agregar(p))
         cuadricula.addWidget(boton, numero // 2, numero % 2)
 

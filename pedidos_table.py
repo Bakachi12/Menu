@@ -4,7 +4,7 @@ Sin dependencia de Qt: cada operación usa su propia conexión SQLite. Los hilos
 HTTP nunca escriben cuentas, ventas ni inventario.
 """
 from pedidos_cocina import PAGINA as PAGINA_COCINA
-from cocina import preparar_cocina
+from cocina import preparar_cocina, platos_cocina, cambiar_disponibilidad, validar_aumentos
 from contextlib import contextmanager
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -172,6 +172,7 @@ class SolicitudesTable:
                         raise ValueError('El catálogo cambió. Rechaza esta solicitud y pide enviarla de nuevo.')
                     p.pop('producto_id')
                     p.update(cliente_id=cliente, cliente_nombre=nombre[0] if nombre else '')
+                validar_aumentos(db, [], nuevos)
                 fila = db.execute('SELECT productos FROM pedidos_abiertos WHERE mesa = ?', (mesa,)).fetchone()
                 cuenta = (json.loads(fila[0]) if fila else []) + nuevos
                 db.execute('''INSERT INTO pedidos_abiertos(mesa, productos) VALUES (?, ?)
@@ -236,11 +237,13 @@ class ServidorTable:
                 ruta = urlsplit(self.path).path
                 if ruta == '/cocina':
                     return self.responder(200, PAGINA_COCINA, 'text/html; charset=utf-8')
-                if ruta in ('/api/cocina', '/api/cocina/listas'):
+                if ruta in ('/api/cocina', '/api/cocina/listas', '/api/cocina/disponibilidad'):
                     if not self.autorizado('cocina'):
                         return self.responder(401, dict(error='Vincula esta terminal e inicia sesión en cocina.'))
                     try:
                         with servicio.conexion() as db:
+                            if ruta.endswith('/disponibilidad'):
+                                return self.responder(200, platos_cocina(db))
                             consulta = ("SELECT id,fecha,mesa,cliente,plato,preparacion,acompanamiento,extra "
                                         "FROM ordenes_cocina WHERE estado=?")
                             if ruta.endswith('/listas'):
@@ -286,6 +289,19 @@ class ServidorTable:
 
             def do_POST(self):
                 partes = urlsplit(self.path).path.strip('/').split('/')
+                if len(partes) == 5 and partes[:3] == ['api', 'cocina', 'disponibilidad']:
+                    if not self.autorizado('cocina'):
+                        return self.responder(401, dict(error='Inicia sesión en cocina.'))
+                    try:
+                        if not partes[3].isascii() or not partes[3].isdigit() or len(partes[3]) > 18 or partes[4] not in ('disponible', 'agotado'):
+                            raise ValueError('Cambio de disponibilidad inválido.')
+                        with servicio.conexion() as db:
+                            cambiar_disponibilidad(db, int(partes[3]), partes[4] == 'disponible')
+                        return self.responder(200, {})
+                    except ValueError as e:
+                        return self.responder(400, dict(error=str(e)))
+                    except sqlite3.Error:
+                        return self.responder(503, dict(error='No se pudo guardar la disponibilidad.'))
                 if len(partes) == 4 and partes[:2] == ['api', 'cocina'] and partes[3] in ('lista', 'rellamar'):
                     if not self.autorizado('cocina'):
                         return self.responder(401, dict(error='Vincula esta terminal e inicia sesión en cocina.'))

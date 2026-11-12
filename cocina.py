@@ -30,6 +30,7 @@ def acompanamientos(catalogo):
 
 
 def preparar_cocina(db):
+    db.execute("CREATE TABLE IF NOT EXISTS platos_agotados (producto_id INTEGER PRIMARY KEY)")
     db.execute("""CREATE TABLE IF NOT EXISTS recargos_acompanamiento (
         nombre TEXT PRIMARY KEY, centimos INTEGER NOT NULL CHECK(centimos > 0))""")
     db.execute("""CREATE TABLE IF NOT EXISTS ordenes_cocina (
@@ -57,3 +58,33 @@ def sincronizar_comandas(db, mesa, anteriores, actuales):
                  p.get('acompanamiento', ''), p.get('extra', '')))
     for unidad in anteriores_ids - actuales_ids:
         db.execute("UPDATE ordenes_cocina SET estado='retirada' WHERE unidad=? AND estado IN ('pendiente','lista')", (unidad,))
+
+
+def platos_cocina(db):
+    filas = db.execute("""SELECT p.id,p.nombre,p.categoria,p.seccion,a.producto_id IS NULL
+        FROM productos p LEFT JOIN platos_agotados a ON a.producto_id=p.id
+        WHERE p.activo=1 ORDER BY p.nombre COLLATE NOCASE, p.id""")
+    return [dict(id=i, nombre=n, categoria=c, disponible=bool(disponible))
+            for i,n,c,seccion,disponible in filas if (seccion or seccion_inicial(n,c)) == COCINA]
+
+
+def cambiar_disponibilidad(db, identificador, disponible):
+    db.execute("BEGIN IMMEDIATE")
+    if not any(p['id'] == identificador for p in platos_cocina(db)):
+        raise ValueError('El plato ya no pertenece al menú de cocina.')
+    if disponible:
+        db.execute("DELETE FROM platos_agotados WHERE producto_id=?", (identificador,))
+    else:
+        db.execute("INSERT OR IGNORE INTO platos_agotados VALUES (?)", (identificador,))
+
+
+def validar_aumentos(db, anteriores, actuales):
+    from collections import Counter
+    def cantidades(productos):
+        return Counter((p['nombre'], p.get('categoria', 'General')) for p in productos)
+    aumentos = cantidades(actuales) - cantidades(anteriores)
+    if aumentos:
+        for nombre, categoria in db.execute("""SELECT p.nombre,p.categoria FROM platos_agotados a
+                JOIN productos p ON p.id=a.producto_id"""):
+            if (nombre, categoria) in aumentos:
+                raise ValueError(f'{nombre}: No disponible')
