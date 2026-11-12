@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from threading import Thread, Lock
 from time import monotonic
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 import hashlib
 import json
 import secrets
@@ -236,14 +236,25 @@ class ServidorTable:
                 ruta = urlsplit(self.path).path
                 if ruta == '/cocina':
                     return self.responder(200, PAGINA_COCINA, 'text/html; charset=utf-8')
-                if ruta == '/api/cocina':
+                if ruta in ('/api/cocina', '/api/cocina/listas'):
                     if not self.autorizado('cocina'):
                         return self.responder(401, dict(error='Vincula esta terminal e inicia sesión en cocina.'))
                     try:
                         with servicio.conexion() as db:
-                            filas = db.execute("SELECT id,fecha,mesa,cliente,plato,preparacion,acompanamiento,extra "
-                                              "FROM ordenes_cocina WHERE estado='pendiente' ORDER BY id")
-                            ordenes = [dict(f) for f in filas]
+                            consulta = ("SELECT id,fecha,mesa,cliente,plato,preparacion,acompanamiento,extra "
+                                        "FROM ordenes_cocina WHERE estado=?")
+                            if ruta.endswith('/listas'):
+                                antes = parse_qs(urlsplit(self.path).query).get('antes', [None])[0]
+                                parametros = ['lista']
+                                if antes is not None:
+                                    if not antes.isascii() or not antes.isdigit() or len(antes) > 18:
+                                        return self.responder(400, dict(error='Página de órdenes inválida.'))
+                                    consulta += " AND id < ?"
+                                    parametros.append(int(antes))
+                                filas = db.execute(consulta + " ORDER BY id DESC LIMIT 51", parametros)
+                                listas = [dict(f) for f in filas]
+                                return self.responder(200, dict(ordenes=listas[:50], hay_mas=len(listas) > 50))
+                            ordenes = [dict(f) for f in db.execute(consulta + " ORDER BY id", ('pendiente',))]
                         return self.responder(200, ordenes)
                     except sqlite3.Error:
                         return self.responder(503, dict(error='Cola no disponible.'))
@@ -275,15 +286,19 @@ class ServidorTable:
 
             def do_POST(self):
                 partes = urlsplit(self.path).path.strip('/').split('/')
-                if len(partes) == 4 and partes[:2] == ['api', 'cocina'] and partes[3] == 'lista':
+                if len(partes) == 4 and partes[:2] == ['api', 'cocina'] and partes[3] in ('lista', 'rellamar'):
                     if not self.autorizado('cocina'):
                         return self.responder(401, dict(error='Vincula esta terminal e inicia sesión en cocina.'))
                     if not partes[2].isascii() or not partes[2].isdigit() or len(partes[2]) > 18:
                         return self.responder(400, dict(error='Orden inválida.'))
                     try:
                         with servicio.conexion() as db:
-                            db.execute("UPDATE ordenes_cocina SET estado='lista' WHERE id=? AND estado='pendiente'",
-                                       (int(partes[2]),))
+                            origen, destino = ('pendiente', 'lista') if partes[3] == 'lista' else ('lista', 'pendiente')
+                            db.execute("UPDATE ordenes_cocina SET estado=? WHERE id=? AND estado=?",
+                                       (destino, int(partes[2]), origen))
+                            fila = db.execute("SELECT estado FROM ordenes_cocina WHERE id=?", (int(partes[2]),)).fetchone()
+                            if not fila or fila[0] != destino:
+                                return self.responder(409, dict(error='Esta orden ya no está disponible.'))
                         return self.responder(200, {})
                     except sqlite3.Error:
                         return self.responder(503, dict(error='No se pudo actualizar la orden.'))

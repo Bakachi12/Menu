@@ -63,6 +63,8 @@ class ColaCocina(unittest.TestCase):
             self.assertEqual(error.exception.code, 401)
 
         perfil = dict(usuario='turno', password='prueba')
+        denegada('/api/cocina/listas')
+        denegada('/api/cocina/1/rellamar', 'POST')
         denegada('/api/cocina')
         denegada('/api/cocina/1/lista', 'POST')
         denegada('/api/cocina/login', 'POST', datos=dict(usuario='turno', password='incorrecta'))
@@ -77,6 +79,18 @@ class ColaCocina(unittest.TestCase):
         for _ in range(2):
             consultar(f"/api/cocina/{cola[0]['id']}/lista", 'POST')
         self.assertEqual(consultar('/api/cocina'), cola[1:])
+        historial = consultar('/api/cocina/listas')
+        self.assertEqual(historial, dict(ordenes=cola[:1], hay_mas=False))
+        for _ in range(2):
+            consultar(f"/api/cocina/{cola[0]['id']}/rellamar", 'POST')
+        self.assertEqual(consultar('/api/cocina'), cola)
+        self.assertEqual(consultar('/api/cocina/listas')['ordenes'], [])
+        consultar(f"/api/cocina/{cola[0]['id']}/lista", 'POST')
+        with self.servicio.conexion() as db:
+            sincronizar_comandas(db, 'Mesa 01', [self.yuca, self.papas], [self.papas])
+        with self.assertRaises(HTTPError) as error:
+            consultar(f"/api/cocina/{cola[0]['id']}/rellamar", 'POST')
+        self.assertEqual(error.exception.code, 409)
         mesas = self.servicio.vincular('Mesas')
         with self.assertRaises(HTTPError) as error:
             consultar('/api/cocina', token=mesas)
