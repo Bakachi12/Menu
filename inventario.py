@@ -1035,23 +1035,23 @@ class PaginaInventario(QWidget):
         self.al_cierre_turno = None
         self.setObjectName("PaginaInventario")
         self.setStyleSheet("""
-            QWidget#PaginaInventario { background: #0B1020; color: #F4F2ED; }
+            QWidget#PaginaInventario { background: #101c1b; color: #F4F2ED; }
             QLabel { color: #DCE4F0; background: transparent; font-size: 17px; }
             QLabel#TituloInventario { color: #F2C66D; font-size: 29px; font-weight: 600; }
             QLabel#SubtituloInventario { color: #A8B8CE; font-size: 16px; }
             QLabel#EstadoInventario {
-                background: #172235; border: 1px solid #34445E; border-radius: 12px;
+                background: #1c302c; border: 1px solid #40594f; border-radius: 12px;
                 color: #F2C66D; padding: 14px 18px; font-size: 17px;
             }
             QWidget#TarjetaInventario {
-                background: #151F30; border: 1px solid #303C52; border-radius: 16px;
+                background: #1a2e2b; border: 1px solid #3c554d; border-radius: 16px;
             }
             QWidget#PaginaInventario QComboBox, QWidget#PaginaInventario QLineEdit {
-                background: #0D1523; color: #F4F2ED; border: 1px solid #42516A;
+                background: #10221e; color: #F4F2ED; border: 1px solid #516b60;
                 border-radius: 10px; padding: 10px 14px; font-size: 19px; min-height: 36px;
             }
             QWidget#PaginaInventario QComboBox QAbstractItemView {
-                background: #151F30; color: #F4F2ED; border: 1px solid #42516A;
+                background: #1a2e2b; color: #F4F2ED; border: 1px solid #516b60;
                 selection-background-color: #E9BA54; selection-color: #111827;
                 outline: 0;
             }
@@ -1059,18 +1059,18 @@ class PaginaInventario(QWidget):
                 min-height: 48px; padding: 8px 12px;
             }
             QWidget#PaginaInventario QLineEdit#CantidadInventario {
-                background: #0D1523; color: #FFFFFF; border: 2px solid #42516A;
+                background: #10221e; color: #FFFFFF; border: 2px solid #516b60;
                 border-radius: 10px; padding: 8px; font-size: 23px; font-weight: 600;
                 min-width: 132px; min-height: 52px;
             }
             QWidget#PaginaInventario QLineEdit#CantidadInventario:focus { border-color: #D6A74C; }
             QWidget#PaginaInventario QPushButton {
-                background: #233149; color: #F4F2ED; border: 1px solid #42516A;
+                background: #29453e; color: #F4F2ED; border: 1px solid #516b60;
                 border-radius: 12px; font-size: 18px; font-weight: 600;
                 padding: 12px 18px; min-height: 52px;
             }
             QWidget#PaginaInventario QPushButton:hover { border-color: #D6A74C; color: #F2C66D; }
-            QWidget#PaginaInventario QPushButton:pressed { background: #354762; }
+            QWidget#PaginaInventario QPushButton:pressed { background: #36564b; }
             QWidget#PaginaInventario QPushButton#AccionPrincipal {
                 background: #E9BA54; color: #111827; border-color: #E9BA54;
             }
@@ -1078,10 +1078,10 @@ class PaginaInventario(QWidget):
                 background: #71343C; color: white; border-color: #A65660;
             }
             QWidget#PaginaInventario QPushButton:disabled {
-                background: #263248; color: #8492A8; border-color: #303C52;
+                background: #263248; color: #8492A8; border-color: #3c554d;
             }
             QScrollArea { border: none; background: transparent; }
-            QFrame#SeparadorInventario { background: #303C52; max-height: 1px; }
+            QFrame#SeparadorInventario { background: #3c554d; max-height: 1px; }
         """)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 20, 24, 20)
@@ -1152,7 +1152,7 @@ class PaginaInventario(QWidget):
                     border-radius: 12px; padding: 14px 20px; font-size: 19px; font-weight: bold; }
                 QPushButton:hover { background: #F2C66D; border-color: #F2C66D; }
                 QPushButton:pressed { background: #D6A74C; }
-                QPushButton:disabled { background: #34445E; color: #A8B4C8; border-color: #34445E; }
+                QPushButton:disabled { background: #40594f; color: #A8B4C8; border-color: #40594f; }
             """)
         elif object_name == "AccionPeligro":
             boton.setStyleSheet("""
@@ -1201,7 +1201,7 @@ class PaginaInventario(QWidget):
         fila = QFrame()
         fila.setObjectName("FilaInventario")
         fila.setStyleSheet(
-            "QFrame#FilaInventario { background: #101725; border: 1px solid #26344B; "
+            "QFrame#FilaInventario { background: #132320; border: 1px solid #26344B; "
             "border-radius: 10px; }"
         )
         fila_layout = QHBoxLayout(fila)
@@ -1365,7 +1365,7 @@ class PaginaInventario(QWidget):
         fila = QFrame()
         fila.setObjectName("FilaExistencia")
         fila.setStyleSheet(
-            "QFrame#FilaExistencia { background: #101725; border: 1px solid #26344B; "
+            "QFrame#FilaExistencia { background: #132320; border: 1px solid #26344B; "
             "border-radius: 10px; }"
         )
         fila_layout = QHBoxLayout(fila)
@@ -1542,7 +1542,7 @@ class PaginaInventario(QWidget):
             etiqueta = QLabel(texto)
             etiqueta.setWordWrap(True)
             etiqueta.setStyleSheet(
-                "background: #101725; border: 1px solid #26344B; border-radius: 10px; "
+                "background: #132320; border: 1px solid #26344B; border-radius: 10px; "
                 "padding: 14px; font-size: 16px;"
             )
             layout.addWidget(etiqueta)
@@ -1789,14 +1789,14 @@ class PaginaHojaInventarios(QWidget):
         self.gestion = gestion
         self.setObjectName("PaginaHojaInventarios")
         self.setStyleSheet("""
-            QWidget#PaginaHojaInventarios { background: #0B1020; color: #F4F2ED; }
+            QWidget#PaginaHojaInventarios { background: #101c1b; color: #F4F2ED; }
             QLabel { color: #DCE4F0; background: transparent; font-size: 17px; }
             QLabel#TituloHojaInventarios {
                 color: #F2C66D; font-size: 29px; font-weight: 600;
             }
             QLabel#EstadoHojaInventarios { color: #FFAEAE; font-size: 16px; }
             QFrame#TarjetaTurnoHoja {
-                background: #151F30; border: 1px solid #29384E; border-radius: 16px;
+                background: #1a2e2b; border: 1px solid #29384E; border-radius: 16px;
             }
             QFrame#TarjetaTurnoHoja:hover {
                 background: #1B293F; border: 1px solid #D6AE62;
@@ -1825,7 +1825,7 @@ class PaginaHojaInventarios(QWidget):
         layout.addWidget(self.estado)
 
         self.contenedor_tarjetas = QWidget()
-        self.contenedor_tarjetas.setStyleSheet("background-color: #0B1020; border: none;")
+        self.contenedor_tarjetas.setStyleSheet("background-color: #101c1b; border: none;")
         self.lista_tarjetas = QVBoxLayout(self.contenedor_tarjetas)
         self.lista_tarjetas.setContentsMargins(2, 4, 8, 4)
         self.lista_tarjetas.setSpacing(12)
@@ -1833,8 +1833,8 @@ class PaginaHojaInventarios(QWidget):
         self.scroll.setWidgetResizable(True)
         self.scroll.setFrameShape(QFrame.Shape.NoFrame)
         self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.scroll.setStyleSheet("QScrollArea { background-color: #0B1020; border: none; }")
-        self.scroll.viewport().setStyleSheet("background-color: #0B1020; border: none;")
+        self.scroll.setStyleSheet("QScrollArea { background-color: #101c1b; border: none; }")
+        self.scroll.viewport().setStyleSheet("background-color: #101c1b; border: none;")
         self.scroll.setWidget(self.contenedor_tarjetas)
         layout.addWidget(self.scroll, 1)
         self.detalle = None
@@ -1923,9 +1923,9 @@ class _DetalleHojaInventario(QWidget):
             QTableWidget { background: #0B1525; alternate-background-color: #152136;
                 color: #F4F2ED; gridline-color: #29384E; border: 1px solid #29384E;
                 border-radius: 10px; font-size: 15px; }
-            QHeaderView::section { background: #233149; color: #F2C66D;
+            QHeaderView::section { background: #29453e; color: #F2C66D;
                 border: none; padding: 10px; font-weight: bold; }
-            QPushButton { background: #D6AE62; color: #101725; border: none;
+            QPushButton { background: #D6AE62; color: #132320; border: none;
                 border-radius: 9px; padding: 14px 24px; font-size: 16px; font-weight: bold; }
             QPushButton:hover { background: #F2C66D; }
         """)
@@ -2045,7 +2045,7 @@ class PaginaHorarioTurnos(QWidget):
         self.gestion = gestion
         self.setObjectName("PaginaHorarioTurnos")
         self.setStyleSheet("""
-            QWidget#PaginaHorarioTurnos { background: #0B1020; color: #F4F2ED; }
+            QWidget#PaginaHorarioTurnos { background: #101c1b; color: #F4F2ED; }
             QLabel { color: #DCE4F0; background: transparent; font-size: 17px; }
             QLabel#TituloHorarioTurnos {
                 color: #F2C66D; font-size: 29px; font-weight: 600;
@@ -2053,12 +2053,12 @@ class PaginaHorarioTurnos(QWidget):
             QLabel#EstadoHorarioTurnos { color: #8ED6A0; font-size: 16px; }
             QWidget#PaginaHorarioTurnos QComboBox,
             QWidget#PaginaHorarioTurnos QTimeEdit {
-                background: #0D1523; color: #F4F2ED; border: 1px solid #42516A;
+                background: #10221e; color: #F4F2ED; border: 1px solid #516b60;
                 border-radius: 10px; padding: 10px 14px; font-size: 19px;
                 min-height: 48px;
             }
             QWidget#PaginaHorarioTurnos QComboBox QAbstractItemView {
-                background: #151F30; color: #F4F2ED; selection-background-color: #E9BA54;
+                background: #1a2e2b; color: #F4F2ED; selection-background-color: #E9BA54;
                 selection-color: #111827;
             }
             QWidget#PaginaHorarioTurnos QPushButton {
@@ -2070,12 +2070,12 @@ class PaginaHorarioTurnos(QWidget):
                 background: #71343C; color: white; border-color: #A65660;
             }
             QTreeWidget {
-                background: #101725; alternate-background-color: #182337;
-                color: #F4F2ED; gridline-color: #42516A;
-                border: 1px solid #42516A; border-radius: 8px; font-size: 16px;
+                background: #132320; alternate-background-color: #182337;
+                color: #F4F2ED; gridline-color: #516b60;
+                border: 1px solid #516b60; border-radius: 8px; font-size: 16px;
             }
             QHeaderView::section {
-                background: #233149; color: #F2C66D; border: 1px solid #42516A;
+                background: #29453e; color: #F2C66D; border: 1px solid #516b60;
                 padding: 10px; font-size: 15px; font-weight: bold;
             }
         """)

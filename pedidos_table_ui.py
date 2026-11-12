@@ -185,7 +185,7 @@ class PaginaPedidosTable(QWidget):
                 font-size: 18px;
             }
             QLabel#TituloPedidoMovil {
-                color: #FFD17C;
+                color: #f2cd84;
                 font-size: 26px;
                 font-weight: bold;
             }
@@ -195,7 +195,7 @@ class PaginaPedidosTable(QWidget):
                 font-weight: bold;
             }
             QLabel#TotalPedidoMovil {
-                color: #FFD17C;
+                color: #f2cd84;
                 font-size: 34px;
                 font-weight: bold;
             }
@@ -224,7 +224,7 @@ class PaginaPedidosTable(QWidget):
                 color: #152033;
                 font-size: 22px;
             }
-            QPushButton#AceptarPedidoMovil:hover { background: #FFD17C; }
+            QPushButton#AceptarPedidoMovil:hover { background: #f2cd84; }
             QPushButton#RechazarPedidoMovil {
                 background: #512E3A;
                 border-color: #86505A;

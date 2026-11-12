@@ -706,6 +706,7 @@ def cargar_historial():
     ventas = historial_cobros(sesion)
     actualizar_anios_historial(ventas)
 
+    tabla_historial.verticalHeader().setDefaultSectionSize(48)
     tabla_historial.setRowCount(len(ventas))
 
     for fila, venta in enumerate(ventas):
@@ -797,7 +798,7 @@ def cobrar_mesa(nombre_mesa):
             imagen = imagen.copy(0, 0, imagen.width() // 2, imagen.height())
         boton.setIcon(QIcon(imagen))
         boton.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        boton.setIconSize(QSize(148, 68))
+        boton.setIconSize(QSize(76, 44))
         boton.setMinimumHeight(84)
         metodos.addButton(boton)
     def seleccionar_pago(boton):
@@ -1041,10 +1042,9 @@ def asignar_nombre_mesa(nombre_mesa, boton):
 
         if nombre:
             nombres_mesas[nombre_mesa] = nombre
-            boton.setText(f"{nombre_mesa}\n{nombre}")
         else:
             nombres_mesas.pop(nombre_mesa, None)
-            boton.setText(nombre_mesa)
+        filtrar_mesas(filtro_mesas_actual)
 
 
 def seleccionar_mesa(boton_actual):
@@ -1076,15 +1076,16 @@ def crear_boton_mesa(nombre):
 
     boton.setStyleSheet("""
         QPushButton {
-            background-color: rgba(65, 65, 84, 185);
+            background-color: #192e2b;
             color: white;
-            border: 1px solid #55556A;
+            border: 1px solid #52766b;
             border-radius: 12px;
             font-size: 17px;
             font-weight: bold;
             padding: 10px;
         }
 
+        QPushButton[ocupada="true"] { background: #413829; border: 2px solid #b59966; }
         QPushButton:hover {
             background-color: rgba(212, 175, 55, 225);
             color: black;
@@ -1188,6 +1189,13 @@ def filtrar_mesas(filtro):
             or (filtro == "ocupadas" and ocupada)
         )
 
+        alias = nombres_mesas.get(nombre_mesa)
+        estado = "Ocupada" if ocupada else "Libre"
+        boton.setText("\n".join(filter(None, (nombre_mesa, alias, estado))))
+        if boton.property("ocupada") != ocupada:
+            boton.setProperty("ocupada", ocupada)
+            boton.style().unpolish(boton)
+            boton.style().polish(boton)
         boton.setVisible(mostrar)
 
         if mostrar:
@@ -1608,11 +1616,11 @@ scroll_productos_config.setStyleSheet("QScrollArea { background: transparent; bo
 contenido_productos_config = QWidget()
 contenido_productos_config.setObjectName("FondoProductosConfig")
 contenido_productos_config.setStyleSheet(
-    "QWidget#FondoProductosConfig { background-color: #101725; }"
+    "QWidget#FondoProductosConfig { background-color: #132320; }"
 )
 scroll_productos_config.viewport().setObjectName("ViewportProductosConfig")
 scroll_productos_config.viewport().setStyleSheet(
-    "QWidget#ViewportProductosConfig { background-color: #101725; }"
+    "QWidget#ViewportProductosConfig { background-color: #132320; }"
 )
 paneles_productos = QBoxLayout(QBoxLayout.Direction.LeftToRight, contenido_productos_config)
 paneles_productos.setContentsMargins(0, 0, 0, 0)
@@ -1635,7 +1643,7 @@ for texto_campo, campo in (("Nombre", txt_nombre_producto),
 txt_precio_producto.setInputMethodHints(Qt.InputMethodHint.ImhFormattedNumbersOnly)
 btn_elegir_imagen.setText("Elegir foto del producto")
 formulario_tactil.addWidget(btn_elegir_imagen)
-vista_imagen_producto.setStyleSheet("background-color: #0D1523; border: 1px dashed #42516A; border-radius: 10px; color: #AAB7CB;")
+vista_imagen_producto.setStyleSheet("background-color: #10221e; border: 1px dashed #516b60; border-radius: 10px; color: #AAB7CB;")
 formulario_tactil.addWidget(vista_imagen_producto)
 btn_guardar_producto.setObjectName("GuardarProducto")
 btn_guardar_producto.setText("Guardar producto")
@@ -1959,7 +1967,7 @@ btn_venta_rapida = QPushButton('Venta rápida')
 btn_venta_rapida.setObjectName('btnVentaRapida')
 btn_venta_rapida.setMinimumHeight(120)
 btn_venta_rapida.setStyleSheet('''
-    QPushButton { background: #EDBD58; color: #101725; border: none;
+    QPushButton { background: #EDBD58; color: #132320; border: none;
         border-radius: 16px; font-size: 28px; font-weight: bold; padding: 24px; }
     QPushButton:pressed { background: #D6A74C; }
 ''')
@@ -1967,9 +1975,9 @@ layout_inicio.addWidget(btn_venta_rapida)
 btn_agregar_inventario_turno = QPushButton("Agregar inventario a este turno")
 btn_agregar_inventario_turno.setMinimumHeight(72)
 btn_agregar_inventario_turno.setStyleSheet("""
-    QPushButton { background: #233149; color: #F4F2ED; border: 2px solid #D6AE62;
+    QPushButton { background: #29453e; color: #F4F2ED; border: 2px solid #D6AE62;
         border-radius: 12px; font-size: 20px; font-weight: bold; padding: 14px; }
-    QPushButton:pressed { background: #354762; }
+    QPushButton:pressed { background: #36564b; }
 """)
 layout_inicio.addWidget(btn_agregar_inventario_turno)
 
@@ -1977,18 +1985,18 @@ panel_agregar_inventario_turno = QWidget()
 panel_agregar_inventario_turno.setObjectName("PanelAgregarInventarioTurno")
 panel_agregar_inventario_turno.setStyleSheet("""
     QWidget#PanelAgregarInventarioTurno {
-        background: #151F30; border: 1px solid #42516A; border-radius: 14px;
+        background: #1a2e2b; border: 1px solid #516b60; border-radius: 14px;
     }
     QWidget#PanelAgregarInventarioTurno QLabel {
         color: #DCE4F0; background: transparent; font-size: 16px;
     }
     QWidget#PanelAgregarInventarioTurno QComboBox,
     QWidget#PanelAgregarInventarioTurno QLineEdit {
-        background: #0D1523; color: #F4F2ED; border: 1px solid #42516A;
+        background: #10221e; color: #F4F2ED; border: 1px solid #516b60;
         border-radius: 10px; padding: 10px 14px; font-size: 19px; min-height: 48px;
     }
     QWidget#PanelAgregarInventarioTurno QComboBox QAbstractItemView {
-        background: #151F30; color: #F4F2ED; selection-background-color: #E9BA54;
+        background: #1a2e2b; color: #F4F2ED; selection-background-color: #E9BA54;
         selection-color: #111827;
     }
     QWidget#PanelAgregarInventarioTurno QPushButton {
@@ -2037,21 +2045,21 @@ panel_acciones_admin = QWidget()
 panel_acciones_admin.setObjectName("AccionesAdminInicio")
 panel_acciones_admin.setStyleSheet("""
     QWidget#AccionesAdminInicio {
-        background: #151F30; border: 1px solid #34445E; border-radius: 16px;
+        background: #1a2e2b; border: 1px solid #40594f; border-radius: 16px;
     }
     QWidget#AccionesAdminInicio QLabel {
         color: #F2C66D; background: transparent; font-size: 22px;
         font-weight: bold; border: none;
     }
     QWidget#AccionesAdminInicio QPushButton {
-        background: #233149; color: #F4F2ED; border: 2px solid #42516A;
+        background: #29453e; color: #F4F2ED; border: 2px solid #516b60;
         border-radius: 12px; font-size: 20px; font-weight: bold;
         padding: 14px 20px; min-height: 68px;
     }
     QWidget#AccionesAdminInicio QPushButton:hover {
         border-color: #D6AE62; color: #F2C66D;
     }
-    QWidget#AccionesAdminInicio QPushButton:pressed { background: #354762; }
+    QWidget#AccionesAdminInicio QPushButton:pressed { background: #36564b; }
 """)
 layout_acciones_admin = QVBoxLayout(panel_acciones_admin)
 layout_acciones_admin.setContentsMargins(18, 18, 18, 18)
@@ -2104,9 +2112,9 @@ fila_titulo.addWidget(titulo_pagina, 1)
 btn_inventario_desde_pedido = QPushButton("Agregar inventario")
 btn_inventario_desde_pedido.setMinimumHeight(52)
 btn_inventario_desde_pedido.setStyleSheet("""
-    QPushButton { background: #233149; color: #F4F2ED; border: 1px solid #D6AE62;
+    QPushButton { background: #29453e; color: #F4F2ED; border: 1px solid #D6AE62;
         border-radius: 10px; padding: 8px 14px; font-size: 15px; font-weight: bold; }
-    QPushButton:hover { background: #354762; color: #F2C66D; }
+    QPushButton:hover { background: #36564b; color: #F2C66D; }
 """)
 btn_inventario_desde_pedido.setToolTip(
     "Registrar existencias nuevas recibidas para el inventario disponible"
@@ -2255,16 +2263,16 @@ btn_confirmar_inventario_agregado.clicked.connect(guardar_inventario_agregado)
 pagina_verificacion_libre = QWidget()
 pagina_verificacion_libre.setObjectName('VerificacionInventarioLibre')
 pagina_verificacion_libre.setStyleSheet('''
-    QWidget#VerificacionInventarioLibre { background: #101725; color: #F4F2ED; }
+    QWidget#VerificacionInventarioLibre { background: #132320; color: #F4F2ED; }
     QLabel { color: #F4F2ED; background: transparent; font-size: 17px; }
     QFrame#FilaConteoLibre { background: #182337; border: 1px solid #34445A; border-radius: 12px; }
     QLabel#ProductoConteo { color: #F6F1E5; font-size: 19px; font-weight: 600; }
     QLabel#DetalleConteo { color: #B6C2D2; font-size: 14px; }
-    QLineEdit#CantidadLibre { background: #101725; color: #FFF4DC; border: 1px solid #516179;
+    QLineEdit#CantidadLibre { background: #132320; color: #FFF4DC; border: 1px solid #516179;
         border-radius: 9px; padding: 6px; font-size: 20px; }
     QLineEdit#CantidadLibre:focus { border: 2px solid #D6AE62; }
     QPushButton:disabled { color: #BAC3D0; background: #344052; }
-    QPushButton { background: #D6AE62; color: #101725; border: none;
+    QPushButton { background: #D6AE62; color: #132320; border: none;
         border-radius: 10px; min-height: 58px; padding: 12px; font-size: 19px; font-weight: bold; }
 ''')
 layout_verificacion_libre = QVBoxLayout(pagina_verificacion_libre)
@@ -2277,7 +2285,7 @@ scroll_verificacion_libre = QScrollArea()
 scroll_verificacion_libre.setWidgetResizable(True)
 scroll_verificacion_libre.setFrameShape(QFrame.Shape.NoFrame)
 contenido_verificacion_libre = QWidget()
-contenido_verificacion_libre.setStyleSheet('background: #0B1220;')
+contenido_verificacion_libre.setStyleSheet('background: #101c1b;')
 filas_verificacion_libre = QVBoxLayout(contenido_verificacion_libre)
 filas_verificacion_libre.setSpacing(10)
 scroll_verificacion_libre.setWidget(contenido_verificacion_libre)
@@ -2553,6 +2561,25 @@ def mostrar_resultado_cierre():
     paginas.setCurrentWidget(pagina_inventario)
 
 pagina_inventario.al_cierre_turno = mostrar_resultado_cierre
+
+# Las páginas largas se desplazan dentro de la terminal sin imponer su altura
+# al resto de las páginas del QStackedWidget.
+def permitir_desplazamiento(pagina):
+    contenido = QWidget()
+    contenido.setLayout(pagina.layout())
+    scroll = QScrollArea()
+    scroll.setWidgetResizable(True)
+    scroll.setFrameShape(QFrame.Shape.NoFrame)
+    scroll.setStyleSheet("QScrollArea {background:transparent;} QScrollArea > QWidget > QWidget {background:transparent;}")
+    scroll.setWidget(contenido)
+    layout = QVBoxLayout(pagina)
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.addWidget(scroll)
+
+
+for pagina_larga in (pagina_configuracion, pagina_usuarios, pagina_inicio, pagina_config_mesas):
+    permitir_desplazamiento(pagina_larga)
+
 
 acceso = DialogoAcceso(sesion, ventana)
 

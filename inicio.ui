@@ -21,7 +21,7 @@
   </property>
   <property name="styleSheet">
    <string notr="true">QMainWindow, QWidget#centralwidget {
-    background-color: #0B1020;
+    background-color: #101c1b;
     color: #F4F2ED;
 }</string>
   </property>
@@ -46,13 +46,13 @@
         <property name="styleSheet">
          <string notr="true">
 QFrame#PanelLateral {
-    background-color: rgba(11, 20, 35, 185);
+    background-color: rgba(15, 32, 28, 242);
     border: 1px solid rgba(43, 58, 80, 210);
     border-radius: 16px;
 }
 
 QFrame#PanelLateral QPushButton {
-    background-color: #172337;
+    background-color: #1b302b;
     color: #E8EDF5;
     border: 1px solid #2A3A52;
     border-radius: 12px;
@@ -70,7 +70,7 @@ QFrame#PanelLateral QPushButton:hover {
 }
 
 QFrame#PanelLateral QPushButton:checked {
-    background-color: #293A53;
+    background-color: #314941;
     color: #FFE0A0;
     border: 2px solid #D6AE62;
 }
@@ -641,7 +641,7 @@ QPushButton:checked {
            <widget class="QWidget" name="PaginaPedido">
             <property name="styleSheet">
              <string notr="true">QWidget#PaginaPedido {
-    background-color: rgba(11, 18, 32, 175);
+    background-color: rgba(14, 28, 24, 225);
 }</string>
             </property>
            </widget>
