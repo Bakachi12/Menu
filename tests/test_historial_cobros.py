@@ -64,3 +64,19 @@ class HistorialCobros(TestCase):
         with self.sesion.conexion() as db:
             self.assertEqual(db.execute('SELECT COUNT(*) FROM ventas').fetchone()[0],2)
             self.assertEqual(db.execute('SELECT COUNT(*) FROM movimientos_inventario').fetchone()[0],0)
+
+    def test_platos_cobrados_sin_stock_en_turno_y_venta_libre(self):
+        self.sesion.exigir_admin = lambda: None
+        self.datos.inicializar_catalogo(self.sesion, [dict(nombre='Hamburguesa', precio=6.5)])
+        plato = dict(nombre='Hamburguesa', categoria='General', precio=6.5)
+        bebida = dict(nombre='Café', categoria='General', precio=2.5)
+        self.sesion.usuario = dict(id=10, rol='mesas')
+        self.datos.registrar_venta(self.sesion, 'Mesa 01', '', [plato, bebida, plato], 1, metodo_pago='Visa')
+        self.sesion.usuario['tipo'] = 'venta_libre'
+        self.sesion.inventario_libre_verificado = True
+        self.datos.registrar_venta(self.sesion, 'Venta rápida', '', [plato], metodo_pago='Efectivo')
+        self.assertEqual(self.datos.cantidades_cocina_hoy(self.sesion), [('Hamburguesa', 3)])
+        with self.sesion.conexion() as db:
+            self.assertEqual(db.execute("SELECT producto_nombre,cantidad FROM movimientos_inventario").fetchall(), [('Café', 1)])
+            self.assertEqual(db.execute("SELECT total FROM ventas ORDER BY id DESC LIMIT 2").fetchall(), [(6.5,), (15.5,)])
+            self.assertFalse(db.execute("SELECT 1 FROM productos_inventario_bar WHERE nombre='Hamburguesa'").fetchall())

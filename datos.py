@@ -11,7 +11,7 @@ import sqlite3
 import sys
 import json
 from PySide6.QtCore import QStandardPaths
-from cocina import seccion_inicial, preparaciones_iniciales
+from cocina import BEBIDAS, COCINA, seccion_inicial, preparaciones_iniciales
 from clientes import centimos, nombre_operacion
 
 def preparar_archivo_datos(carpeta):
@@ -104,6 +104,12 @@ def inicializar_catalogo(sesion, productos_iniciales):
                 (producto['nombre'], centimos(producto), 'General'),
             )
 
+        sin_seccion = conexion.execute("SELECT id,nombre,categoria FROM productos WHERE seccion IS NULL OR seccion=''").fetchall()
+        conexion.executemany("UPDATE productos SET seccion=? WHERE id=?",
+                             [(seccion_inicial(n, c), i) for i, n, c in sin_seccion])
+        conexion.execute("""CREATE VIEW IF NOT EXISTS productos_inventario_bar AS
+            SELECT * FROM productos WHERE seccion='Bebidas'""")
+
 
 def cargar_productos(sesion):
     """Devuelve solo productos activos para los botones de las mesas."""
@@ -154,9 +160,14 @@ def registrar_venta(sesion, nombre_mesa, clientes, productos, turno_id=None, *, 
     total = sum(centimos(p) for p in productos) / 100
     with sesion.conexion() as conexion:
         conexion.execute('BEGIN IMMEDIATE')
+        catalogo = {(n, c): seccion for n, c, seccion in conexion.execute("SELECT nombre,categoria,seccion FROM productos")}
+        productos = [dict(p, seccion=catalogo.get((p['nombre'], p.get('categoria', 'General')))
+                          or p.get('seccion') or seccion_inicial(p['nombre'], p.get('categoria', 'General')))
+                     for p in productos]
+        inventariables = [p for p in productos if p['seccion'] == BEBIDAS]
         if es_venta_libre:
             vendidos = {}
-            for producto in productos:
+            for producto in inventariables:
                 clave = (producto.get('id'), producto.get('nombre'), producto.get('categoria', 'General'))
                 vendidos[clave] = vendidos.get(clave, 0) + 1
             for (producto_id, nombre, categoria), cantidad in vendidos.items():
@@ -183,7 +194,7 @@ def registrar_venta(sesion, nombre_mesa, clientes, productos, turno_id=None, *, 
             if turno != (sesion.usuario['id'], 'activo'):
                 raise PermissionError('El turno ya no está activo para este usuario.')
             cantidades_vendidas = {}
-            for producto in productos:
+            for producto in inventariables:
                 clave = (producto.get('nombre'), producto.get('categoria', 'General'))
                 cantidades_vendidas[clave] = cantidades_vendidas.get(clave, 0) + 1
             for (nombre, categoria), cantidad in cantidades_vendidas.items():
@@ -222,3 +233,19 @@ def registrar_venta(sesion, nombre_mesa, clientes, productos, turno_id=None, *, 
             conexion.execute("""UPDATE solicitudes_table SET estado = 'rechazada',
                 responsable_id = ?, resuelta = ? WHERE mesa = ? AND estado = 'pendiente'""",
                 (sesion.usuario['id'], datetime.now().isoformat(timespec='seconds'), nombre_mesa))
+
+
+def cantidades_cocina_hoy(sesion):
+    from collections import Counter
+    sesion.exigir_admin()
+    hoy = datetime.now().strftime('%Y-%m-%d')
+    with sesion.conexion() as db:
+        catalogo = {(n,c): seccion for n,c,seccion in db.execute("SELECT nombre,categoria,seccion FROM productos")}
+        cantidades = Counter()
+        for (contenido,) in db.execute("SELECT productos FROM ventas WHERE substr(fecha,1,10)=?", (hoy,)):
+            for p in json.loads(contenido):
+                nombre, categoria = p['nombre'], p.get('categoria', 'General')
+                seccion = p.get('seccion') or catalogo.get((nombre,categoria)) or seccion_inicial(nombre,categoria)
+                if seccion == COCINA:
+                    cantidades[nombre] += 1
+    return sorted(cantidades.items(), key=lambda par: (-par[1], par[0].casefold()))

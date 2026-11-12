@@ -116,7 +116,7 @@ class GestionTurnos:
                 ON movimientos_inventario(id DESC)
             """)
             productos = db.execute(
-                "SELECT id, nombre, categoria FROM productos"
+                "SELECT id, nombre, categoria FROM productos_inventario_bar"
             ).fetchall()
             db.executemany("""
                 INSERT OR IGNORE INTO existencias_inventario
@@ -256,7 +256,7 @@ class GestionTurnos:
     def productos_disponibles(self):
         with self.sesion.conexion() as db:
             return db.execute(
-                "SELECT id, nombre, categoria FROM productos WHERE activo = 1 ORDER BY nombre COLLATE NOCASE, categoria"
+                "SELECT id, nombre, categoria FROM productos_inventario_bar WHERE activo = 1 ORDER BY nombre COLLATE NOCASE, categoria"
             ).fetchall()
 
     def existencias(self):
@@ -264,7 +264,7 @@ class GestionTurnos:
             db.execute("""
                 INSERT OR IGNORE INTO existencias_inventario
                     (producto_id, producto_nombre, producto_categoria, cantidad)
-                SELECT id, nombre, categoria, 0 FROM productos
+                SELECT id, nombre, categoria, 0 FROM productos_inventario_bar
             """)
             db.execute("""
                 UPDATE existencias_inventario
@@ -284,7 +284,7 @@ class GestionTurnos:
             return db.execute("""
                 SELECT e.producto_id, e.producto_nombre, e.producto_categoria, e.cantidad
                 FROM existencias_inventario e
-                JOIN productos p ON p.id = e.producto_id
+                JOIN productos_inventario_bar p ON p.id = e.producto_id
                 WHERE p.activo = 1
                 ORDER BY e.producto_nombre COLLATE NOCASE, e.producto_categoria
             """).fetchall()
@@ -308,6 +308,7 @@ class GestionTurnos:
                 FROM turnos t
                 JOIN usuarios u ON u.id = t.usuario_id
                 JOIN turno_inventario ti ON ti.turno_id = t.id
+                WHERE t.estado='cerrado' OR ti.producto_id IN (SELECT id FROM productos_inventario_bar)
                 ORDER BY t.id DESC, ti.producto_nombre COLLATE NOCASE,
                          ti.producto_categoria
             """).fetchall()
@@ -328,7 +329,7 @@ class GestionTurnos:
                 if not isinstance(producto, dict):
                     raise ValueError("Una venta del reporte contiene un producto inválido.")
                 nombre = producto.get("nombre")
-                if not nombre:
+                if not nombre or producto.get("seccion", "Bebidas") != "Bebidas":
                     continue
                 categoria = producto.get("categoria", "General")
                 try:
@@ -381,7 +382,7 @@ class GestionTurnos:
         with self.sesion.conexion() as db:
             db.execute("BEGIN IMMEDIATE")
             producto = db.execute("""
-                SELECT p.nombre, p.categoria FROM productos p
+                SELECT p.nombre, p.categoria FROM productos_inventario_bar p
                 WHERE p.id = ? AND p.activo = 1
             """, (producto_id,)).fetchone()
             if producto is None:
@@ -422,7 +423,7 @@ class GestionTurnos:
                 raise PermissionError("No hay un turno activo para agregar inventario.")
             producto = db.execute("""
                 SELECT p.nombre, p.categoria
-                FROM productos p
+                FROM productos_inventario_bar p
                 JOIN turno_inventario ti ON ti.producto_id = p.id
                 WHERE p.id = ? AND p.activo = 1 AND ti.turno_id = ?
             """, (producto_id, turno[0])).fetchone()
@@ -457,7 +458,7 @@ class GestionTurnos:
         with self.sesion.conexion() as db:
             db.execute("BEGIN IMMEDIATE")
             producto = db.execute("""
-                SELECT nombre, categoria FROM productos
+                SELECT nombre, categoria FROM productos_inventario_bar
                 WHERE id = ? AND activo = 1
             """, (producto_id,)).fetchone()
             if producto is None:
@@ -499,7 +500,7 @@ class GestionTurnos:
             turno["productos"] = db.execute("""
                 SELECT producto_id, producto_nombre, producto_categoria, cantidad_asignada,
                        cantidad_apertura, cantidad_vendida, cantidad_cierre
-                FROM turno_inventario WHERE turno_id = ? ORDER BY producto_nombre COLLATE NOCASE
+                FROM turno_inventario WHERE turno_id = ? AND producto_id IN (SELECT id FROM productos_inventario_bar) ORDER BY producto_nombre COLLATE NOCASE
             """, (turno["id"],)).fetchall()
             return turno
 
@@ -562,7 +563,7 @@ class GestionTurnos:
                 p: (nombre, categoria, stock)
                 for p, nombre, categoria, stock in db.execute("""
                     SELECT e.producto_id, e.producto_nombre, e.producto_categoria, e.cantidad
-                    FROM existencias_inventario e JOIN productos p ON p.id=e.producto_id
+                    FROM existencias_inventario e JOIN productos_inventario_bar p ON p.id=e.producto_id
                     WHERE p.activo=1
                 """)
             }
@@ -601,7 +602,7 @@ class GestionTurnos:
                 if not isinstance(producto, dict):
                     raise ValueError("Una venta del turno tiene un producto inválido.")
                 nombre = producto.get("nombre")
-                if nombre:
+                if nombre and producto.get("seccion", "Bebidas") == "Bebidas":
                     clave = (nombre, producto.get("categoria", "General"))
                     vendidos[clave] = vendidos.get(clave, 0) + 1
         return vendidos
@@ -619,10 +620,10 @@ class GestionTurnos:
         db.execute("""
             INSERT OR IGNORE INTO existencias_inventario
                 (producto_id, producto_nombre, producto_categoria, cantidad)
-            SELECT id, nombre, categoria, 0 FROM productos WHERE activo = 1
+            SELECT id, nombre, categoria, 0 FROM productos_inventario_bar WHERE activo = 1
         """)
         productos = db.execute(
-            "SELECT id, nombre, categoria FROM productos WHERE activo = 1"
+            "SELECT id, nombre, categoria FROM productos_inventario_bar WHERE activo = 1"
         ).fetchall()
         asignados = {
             producto_id: (nombre, categoria)
@@ -719,13 +720,13 @@ class GestionTurnos:
         db.execute("""
             INSERT OR IGNORE INTO existencias_inventario
                 (producto_id, producto_nombre, producto_categoria, cantidad)
-            SELECT id, nombre, categoria, 0 FROM productos WHERE activo = 1
+            SELECT id, nombre, categoria, 0 FROM productos_inventario_bar WHERE activo = 1
         """)
         cantidades = {
             producto_id: cantidad
             for producto_id, cantidad in db.execute("""
                 SELECT p.id, e.cantidad
-                FROM productos p
+                FROM productos_inventario_bar p
                 JOIN existencias_inventario e ON e.producto_id = p.id
                 WHERE p.activo = 1
             """)
@@ -825,7 +826,7 @@ class GestionTurnos:
                 raise PermissionError("Este inventario no está pendiente para tu usuario.")
             asignados = db.execute("""
                 SELECT producto_id, producto_nombre, producto_categoria, cantidad_asignada
-                FROM turno_inventario WHERE turno_id = ?
+                FROM turno_inventario WHERE turno_id = ? AND producto_id IN (SELECT id FROM productos_inventario_bar)
             """,
                 (turno_id,),
             ).fetchall()
@@ -912,8 +913,8 @@ class GestionTurnos:
                 SELECT producto_id, producto_nombre, producto_categoria, cantidad_asignada,
                        cantidad_apertura, cantidad_agregada, cantidad_vendida,
                        cantidad_cierre
-                FROM turno_inventario WHERE turno_id = ? ORDER BY producto_nombre COLLATE NOCASE
-            """, (turno_id,)).fetchall()
+                FROM turno_inventario WHERE turno_id = ? AND (? = 'cerrado' OR producto_id IN (SELECT id FROM productos_inventario_bar)) ORDER BY producto_nombre COLLATE NOCASE
+            """, (turno_id, turno[0])).fetchall()
             ventas = db.execute(
                 "SELECT productos FROM ventas WHERE turno_id = ?", (turno_id,)
             ).fetchall()
@@ -958,7 +959,7 @@ class GestionTurnos:
             registros = db.execute("""
                 SELECT producto_id, producto_nombre, producto_categoria, cantidad_asignada,
                        cantidad_apertura, cantidad_agregada, cantidad_vendida
-                FROM turno_inventario WHERE turno_id = ?
+                FROM turno_inventario WHERE turno_id = ? AND producto_id IN (SELECT id FROM productos_inventario_bar)
             """, (turno_id,)).fetchall()
             ventas = db.execute(
                 "SELECT productos FROM ventas WHERE turno_id = ?", (turno_id,)

@@ -25,11 +25,11 @@ if getattr(sys, "frozen", False):
             except OSError:
                 pass
 
-from datos import preparar_archivo_datos, inicializar_catalogo, cargar_productos as leer_productos, registrar_venta, historial_cobros, METODOS_PAGO
+from datos import cantidades_cocina_hoy, preparar_archivo_datos, inicializar_catalogo, cargar_productos as leer_productos, registrar_venta, historial_cobros, METODOS_PAGO
 from inventario import (
     GestionTurnos, PaginaHojaInventarios, PaginaHorarioTurnos, PaginaInventario,
 )
-from cocina import BEBIDAS, COCINA, SECCIONES, acompanamientos
+from cocina import BEBIDAS, COCINA, SECCIONES, acompanamientos, seccion_inicial
 from vista_pedidos import personalizar_plato, cargar_pantalla, dibujar_cuenta, dibujar_productos
 from estilos import HISTORIAL, CONFIGURACION, CATALOGO, TEMA
 
@@ -1402,11 +1402,11 @@ def guardar_producto():
             conexion.execute(
                 """
                 INSERT INTO productos (
-                    nombre, precio_centimos, categoria, imagen
+                    nombre, precio_centimos, categoria, imagen, seccion
                 )
-                VALUES (?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?)
                 """,
-                (nombre, centimos, categoria, imagen_guardada)
+                (nombre, centimos, categoria, imagen_guardada, seccion_inicial(nombre, categoria))
             )
 
     except sqlite3.IntegrityError:
@@ -1667,6 +1667,36 @@ catalogo_tactil.addWidget(btn_configurar_menu)
 btn_recargos = QPushButton("Recargo por acompañamiento extra")
 btn_recargos.clicked.connect(configurar_recargo_extra)
 catalogo_tactil.addWidget(btn_recargos)
+
+def ver_ventas_cocina():
+    if not requiere_admin():
+        return
+    try:
+        cantidades = cantidades_cocina_hoy(sesion)
+    except (ValueError, sqlite3.Error) as error:
+        mensaje_producto.setText(f"No se pudieron leer las ventas: {error}")
+        return
+    dialogo = QDialog(ventana)
+    dialogo.setWindowTitle("Platos vendidos hoy")
+    from estilos import FORMULARIOS
+    dialogo.setStyleSheet(FORMULARIOS)
+    layout = QVBoxLayout(dialogo)
+    lista = QListWidget()
+    for nombre, cantidad in cantidades:
+        lista.addItem(f"{cantidad} × {nombre}")
+    if not cantidades:
+        lista.addItem("Sin platos cobrados hoy")
+    layout.addWidget(lista)
+    cerrar = QPushButton("Cerrar")
+    cerrar.clicked.connect(dialogo.accept)
+    layout.addWidget(cerrar)
+    dialogo.exec()
+
+
+btn_ventas_cocina = QPushButton("Platos vendidos hoy")
+btn_ventas_cocina.clicked.connect(ver_ventas_cocina)
+catalogo_tactil.addWidget(btn_ventas_cocina)
+
 catalogo_tactil.addWidget(btn_eliminar_producto)
 for boton_tactil in (btn_elegir_imagen, btn_guardar_producto, btn_eliminar_producto):
     boton_tactil.setMinimumHeight(60)
