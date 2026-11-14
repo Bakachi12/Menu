@@ -61,3 +61,16 @@ class ResumenPagosTest(unittest.TestCase):
             db.execute("INSERT INTO ventas VALUES('Clave',50,NULL,8,NULL,'2026-11-14 10:30:00')")
             db.execute("INSERT INTO ventas VALUES('Clave',50,NULL,7,NULL,'2026-11-14 12:00:00')")
         self.assertEqual(resumen_pagos_hoja(self,-1)['total_centimos'],425)
+
+    def test_inventory_payments_match_products_not_the_full_receipt_total(self):
+        import json
+        cristal=dict(nombre='Cristal',categoria='Bebidas',seccion='Bebidas',precio=1)
+        plato=dict(nombre='Hamburguesa',categoria='General',seccion='Cocina',precio=13)
+        with self.conexion() as db:
+            db.execute('ALTER TABLE ventas ADD COLUMN productos TEXT')
+            for metodo,total,productos in [('Efectivo',15,[cristal,cristal,plato]),('Yappy',17,[cristal]*17),('Visa',8,[dict(plato,precio=8)])]:
+                db.execute('INSERT INTO ventas VALUES(?,?,1,7,NULL,?,?)',(metodo,total,'2026-11-14',json.dumps(productos)))
+        filas=[dict(nombre='Cristal',categoria='Bebidas',producto='Cristal · Bebidas')]
+        resumen=resumen_pagos_hoja(self,1,filas)
+        self.assertEqual(resumen['total_centimos'],1900)
+        self.assertEqual(resumen['importes'],dict(Efectivo=200,Yappy=1700,Clave=0,Visa=0))

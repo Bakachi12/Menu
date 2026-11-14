@@ -362,6 +362,7 @@ class GestionTurnos:
                 "cajero": cajero,
                 "estado": estado,
                 "producto": f"{nombre} · {categoria}",
+                "nombre": nombre, "categoria": categoria,
                 "recibida": apertura if apertura is not None else asignada,
                 "agregada": agregada,
                 "vendida": vendida,
@@ -1891,6 +1892,7 @@ class PaginaHojaInventarios(QWidget):
         titulo.setObjectName("TituloHojaInventarios")
         layout.addWidget(titulo)
         subtitulo = QLabel("Consulta los turnos y toca una tarjeta para abrir su detalle.")
+        self.subtitulo=subtitulo
         subtitulo.setWordWrap(True)
         layout.addWidget(subtitulo)
 
@@ -1913,12 +1915,38 @@ class PaginaHojaInventarios(QWidget):
         self.scroll.setWidget(self.contenedor_tarjetas)
         layout.addWidget(self.scroll, 1)
         self.detalle = None
+        from PySide6.QtCore import QDate
+        from PySide6.QtWidgets import QDateEdit
+        self.rango_fechas=None
+        filtro=QHBoxLayout()
+        filtro.addWidget(QLabel('Fecha del turno · Desde'))
+        self.fecha_desde=QDateEdit(QDate.currentDate());self.fecha_hasta=QDateEdit(QDate.currentDate())
+        for campo in (self.fecha_desde,self.fecha_hasta):
+            campo.setCalendarPopup(True);campo.setDisplayFormat('dd/MM/yyyy')
+        filtro.addWidget(self.fecha_desde);filtro.addWidget(QLabel('Hasta'));filtro.addWidget(self.fecha_hasta)
+        filtrar=QPushButton('Filtrar');filtrar.clicked.connect(self.aplicar_fechas);filtro.addWidget(filtrar)
+        todas=QPushButton('Todas las fechas');todas.clicked.connect(self.quitar_fechas);filtro.addWidget(todas)
+        layout.insertLayout(2,filtro)
+
+    def aplicar_fechas(self):
+        desde=self.fecha_desde.date().toPython();hasta=self.fecha_hasta.date().toPython()
+        if desde>hasta:
+            self.estado.setText('La fecha Desde no puede ser posterior a Hasta.');return
+        self.rango_fechas=(desde,hasta);self.actualizar()
+
+    def quitar_fechas(self):
+        self.rango_fechas=None;self.actualizar()
+
+    @staticmethod
+    def fecha_turno(fila):
+        try:return datetime.fromisoformat(fila.get('asignacion_fecha') or '').replace(tzinfo=None)
+        except (ValueError,TypeError):return datetime.min
 
     def _abrir_detalle(self, turno, filas):
         """Abre una tabla modal dibujada dentro de la ventana principal."""
         from resumen_pagos import resumen_pagos_hoja
         try:
-            resumen=resumen_pagos_hoja(self.gestion.sesion,turno['turno_id'])
+            resumen=resumen_pagos_hoja(self.gestion.sesion,turno['turno_id'],filas)
         except (ValueError,PermissionError,sqlite3.Error) as error:
             self.estado.setText(f'No se pudieron cargar los cobros: {error}')
             return
@@ -1944,6 +1972,12 @@ class PaginaHojaInventarios(QWidget):
             return
 
         self.estado.clear()
+        self.subtitulo.setText('Mostrando todas las fechas · Más recientes primero.')
+        if self.rango_fechas:
+            desde,hasta=self.rango_fechas
+            self.subtitulo.setText(f'Turnos asignados del {desde:%d/%m/%Y} al {hasta:%d/%m/%Y} · Más recientes primero.')
+            filas=[f for f in filas if desde<=self.fecha_turno(f).date()<=hasta]
+        filas=sorted(filas,key=lambda f:(self.fecha_turno(f),abs(f['turno_id'])),reverse=True)
         self._vaciar_tarjetas()
         turnos = {}
         for fila in filas:
@@ -1979,7 +2013,7 @@ class PaginaHojaInventarios(QWidget):
             tarjeta.mousePressEvent = lambda evento, b=boton: b.click()
             self.lista_tarjetas.addWidget(tarjeta)
         if not filas:
-            vacio = QLabel("Todavía no hay turnos asignados.")
+            vacio = QLabel("No hay hojas en el intervalo seleccionado." if self.rango_fechas else "Todavía no hay turnos asignados.")
             vacio.setStyleSheet("color: #AABAD0; padding: 22px; font-size: 18px;")
             self.lista_tarjetas.addWidget(vacio)
         self.lista_tarjetas.addStretch(1)
@@ -2037,6 +2071,7 @@ class _DetalleHojaInventario(QWidget):
         encabezado.addWidget(estado)
         interior.addLayout(encabezado)
         tabla = QTableWidget(len(filas), 8)
+        tabla.setObjectName("CuadriculaHojaInventario")
         tabla.setHorizontalHeaderLabels([
             "Producto", "Recibido", "Agregado", "Vendido", "Importe B/.",
             "Saldo sistema" if filas and filas[0]["turno_id"] < 0 else "Entregado", "Faltantes", "Sobrantes",
@@ -2069,34 +2104,37 @@ class _DetalleHojaInventario(QWidget):
         tabla.setMaximumHeight(420)
         interior.addWidget(tabla, 1)
         if resumen is not None:
-            from PySide6.QtWidgets import QGridLayout
-            resumen_widget=QWidget()
-            resumen_widget.setObjectName('ResumenPagosHoja')
-            pagos=QGridLayout(resumen_widget)
-            pagos.setContentsMargins(0,4,0,4)
-            pagos.setHorizontalSpacing(24);pagos.setVerticalSpacing(4)
-            pagos.setColumnStretch(0,1)
-            encabezado_pagos=QLabel('Total vendido por forma de pago')
-            encabezado_pagos.setStyleSheet('color:#79eaff; font-size:17px; font-weight:bold;')
-            pagos.addWidget(encabezado_pagos,0,1,1,2)
-            for indice,(metodo,importe) in enumerate(resumen['importes'].items(),1):
-                etiqueta=QLabel(metodo)
-                valor=QLabel(f'B/. {importe/100:.2f}')
-                valor.setObjectName('ImportePagoHoja'+metodo.replace(' ',''))
-                pagos.addWidget(etiqueta,indice,1)
-                pagos.addWidget(valor,indice,2,Qt.AlignmentFlag.AlignRight)
-            fila_total=len(resumen['importes'])+1
-            total=QLabel(f'Total {"registrado" if resumen["ambiguas"] else "general"}   B/. {resumen["total_centimos"]/100:.2f}')
-            total.setObjectName('TotalCobradoHoja')
-            total.setStyleSheet('color:#79eaff; font-size:21px; font-weight:bold; border-top:1px solid #287b99; padding-top:6px;')
-            pagos.addWidget(total,fila_total,1,1,2,Qt.AlignmentFlag.AlignRight)
-            nota=QLabel('Incluye todas las ventas cobradas durante este turno.')
-            if resumen['ambiguas']:
-                nota.setText('Hay cobros antiguos sin una asignación precisa a esta hoja; no se incluyen en el total registrado.')
-            nota.setWordWrap(True)
-            nota.setStyleSheet('color:#a8bad0; font-size:12px;')
-            pagos.addWidget(nota,fila_total+1,1,1,2)
-            interior.addWidget(resumen_widget)
+            from PySide6.QtGui import QColor
+            importes=dict(resumen['importes'])
+            total_tabla=sum(f['dinero_centimos'] for f in filas)
+            diferencia=total_tabla-sum(importes.values())
+            if diferencia:
+                importes['Sin conciliar' if diferencia>0 else 'Diferencia por revisar']=diferencia
+            tabla.setRowCount(len(filas)+len(importes)+1)
+            for indice,(metodo,importe) in enumerate(importes.items(),len(filas)):
+                tabla.setSpan(indice,0,1,3)
+                for col in range(8):
+                    if col in (1,2):continue
+                    texto=metodo if col==3 else f'B/. {importe/100:.2f}' if col==4 else ''
+                    celda=QTableWidgetItem(texto)
+                    celda.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    celda.setBackground(QColor('#112e45'))
+                    tabla.setItem(indice,col,celda)
+                tabla.setRowHeight(indice,34)
+            ultima=tabla.rowCount()-1
+            tabla.setSpan(ultima,0,1,3)
+            for col,texto in ((0,'TOTAL VENDIDO'),(3,str(sum(f['vendida'] for f in filas))),(4,f'B/. {total_tabla/100:.2f}')):
+                celda=QTableWidgetItem(texto)
+                fuente=celda.font();fuente.setBold(True);celda.setFont(fuente)
+                celda.setForeground(QColor('#79eaff'));celda.setBackground(QColor('#173653'))
+                if col:celda.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                tabla.setItem(ultima,col,celda)
+            tabla.setRowHeight(ultima,42)
+            tabla.setMinimumHeight(min(420,max(90,parent.height()-250),sum(tabla.rowHeight(i) for i in range(tabla.rowCount()))+tabla.horizontalHeader().height()+6))
+            if diferencia or resumen['ambiguas']:
+                aviso=QLabel('Los importes sin conciliar no tienen un cobro identificable. El total corresponde a los productos de esta hoja.')
+                aviso.setWordWrap(True);aviso.setStyleSheet('color:#a8bad0; font-size:12px;')
+                interior.addWidget(aviso)
         cerrar = QPushButton("Cerrar detalle")
         cerrar.setMinimumHeight(52)
         cerrar.clicked.connect(self.close)

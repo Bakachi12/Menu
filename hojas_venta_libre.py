@@ -44,5 +44,5 @@ def reporte(sesion):
         parametros=() if sesion.es_admin() else (sesion.usuario['id'],)
         for fila in db.execute('SELECT h.id,h.nombre,h.apertura,h.cierre,p.nombre,p.categoria,p.inicial,p.agregada,p.vendida,p.importe,p.saldo FROM hojas_venta_libre h JOIN hoja_libre_productos p ON p.hoja_id=h.id WHERE 1=1'+condicion+' ORDER BY h.id DESC,p.nombre',parametros):
             hid,nombre,inicio,fin,producto,categoria,inicial,agregada,vendida,importe,saldo=fila
-            resultado.append(dict(turno_id=-hid,asignacion_fecha=inicio,cierre_fecha=fin,cajero='Venta libre · '+nombre,estado='cerrado' if fin else 'activo',producto=producto+' · '+categoria,recibida=inicial,agregada=agregada,vendida=vendida,dinero_centimos=importe,entregada=saldo if saldo is not None else inicial+agregada-vendida,faltante=None,sobrante=None))
+            resultado.append(dict(turno_id=-hid,asignacion_fecha=inicio,cierre_fecha=fin,cajero='Venta libre · '+nombre,estado='cerrado' if fin else 'activo',producto=producto+' · '+categoria,nombre=producto,categoria=categoria,recibida=inicial,agregada=agregada,vendida=vendida,dinero_centimos=importe,entregada=saldo if saldo is not None else inicial+agregada-vendida,faltante=None,sobrante=None))
     return resultado
