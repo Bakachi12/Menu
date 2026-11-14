@@ -80,3 +80,20 @@ class HistorialCobros(TestCase):
             self.assertEqual(db.execute("SELECT producto_nombre,cantidad FROM movimientos_inventario").fetchall(), [('Café', 1)])
             self.assertEqual(db.execute("SELECT total FROM ventas ORDER BY id DESC LIMIT 2").fetchall(), [(6.5,), (15.5,)])
             self.assertFalse(db.execute("SELECT 1 FROM productos_inventario_bar WHERE nombre='Hamburguesa'").fetchall())
+
+    def test_venta_libre_guarda_la_hoja_del_cobro_incluso_para_cocina(self):
+        from hojas_venta_libre import abrir
+        from resumen_pagos import resumen_pagos_hoja
+        self.sesion.exigir_admin=lambda:None
+        self.datos.inicializar_catalogo(self.sesion,[dict(nombre='Hamburguesa',precio=6.5)])
+        self.sesion.usuario=dict(id=10,nombre='Cajero libre',rol='mesas',tipo='venta_libre')
+        self.sesion.inventario_libre_verificado=True
+        with self.sesion.conexion() as db:
+            abrir(db,self.sesion.usuario,{1:10},{1:('Café','General',10)})
+            hoja=db.execute('SELECT id FROM hojas_venta_libre WHERE cierre IS NULL').fetchone()[0]
+        self.datos.registrar_venta(self.sesion,'Venta rápida','',[dict(nombre='Hamburguesa',categoria='General',precio=6.5)],metodo_pago='Visa')
+        with self.sesion.conexion() as db:
+            self.assertEqual(db.execute('SELECT hoja_libre_id FROM ventas ORDER BY id DESC LIMIT 1').fetchone()[0],hoja)
+        resumen=resumen_pagos_hoja(self.sesion,-hoja)
+        self.assertEqual(resumen['importes']['Visa'],650)
+        self.assertEqual(resumen['total_centimos'],650)

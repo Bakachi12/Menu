@@ -33,6 +33,7 @@ def venta(db,usuario,productos):
     for p in productos:
         if p.get('seccion')!='Bebidas':continue
         db.execute('UPDATE hoja_libre_productos SET vendida=vendida+1,importe=importe+? WHERE hoja_id=? AND nombre=? AND categoria=?',(round(p['precio']*100),hoja[0],p['nombre'],p.get('categoria','General')))
+    return hoja[0]
 
 def reporte(sesion):
     if not sesion.usuario:return []

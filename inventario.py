@@ -1916,9 +1916,16 @@ class PaginaHojaInventarios(QWidget):
 
     def _abrir_detalle(self, turno, filas):
         """Abre una tabla modal dibujada dentro de la ventana principal."""
+        from resumen_pagos import resumen_pagos_hoja
+        try:
+            resumen=resumen_pagos_hoja(self.gestion.sesion,turno['turno_id'])
+        except (ValueError,PermissionError,sqlite3.Error) as error:
+            self.estado.setText(f'No se pudieron cargar los cobros: {error}')
+            return
+        self.estado.clear()
         if self.detalle is not None:
             self.detalle.close()
-        self.detalle = _DetalleHojaInventario(self.window(), turno, filas)
+        self.detalle = _DetalleHojaInventario(self.window(), turno, filas, resumen)
         self.detalle.show()
 
     def _vaciar_tarjetas(self):
@@ -1980,7 +1987,7 @@ class PaginaHojaInventarios(QWidget):
 
 class _DetalleHojaInventario(QWidget):
     """Ventana emergente integrada; bloquea solo el contenido de la aplicación."""
-    def __init__(self, parent, turno, filas):
+    def __init__(self, parent, turno, filas, resumen=None):
         super().__init__(parent)
         self.ventana = parent
         self.contenido = parent.centralWidget()
@@ -2061,6 +2068,35 @@ class _DetalleHojaInventario(QWidget):
         tabla.setMinimumHeight(min(170, max(90, len(filas) * 52)))
         tabla.setMaximumHeight(420)
         interior.addWidget(tabla, 1)
+        if resumen is not None:
+            from PySide6.QtWidgets import QGridLayout
+            resumen_widget=QWidget()
+            resumen_widget.setObjectName('ResumenPagosHoja')
+            pagos=QGridLayout(resumen_widget)
+            pagos.setContentsMargins(0,4,0,4)
+            pagos.setHorizontalSpacing(24);pagos.setVerticalSpacing(4)
+            pagos.setColumnStretch(0,1)
+            encabezado_pagos=QLabel('Total vendido por forma de pago')
+            encabezado_pagos.setStyleSheet('color:#79eaff; font-size:17px; font-weight:bold;')
+            pagos.addWidget(encabezado_pagos,0,1,1,2)
+            for indice,(metodo,importe) in enumerate(resumen['importes'].items(),1):
+                etiqueta=QLabel(metodo)
+                valor=QLabel(f'B/. {importe/100:.2f}')
+                valor.setObjectName('ImportePagoHoja'+metodo.replace(' ',''))
+                pagos.addWidget(etiqueta,indice,1)
+                pagos.addWidget(valor,indice,2,Qt.AlignmentFlag.AlignRight)
+            fila_total=len(resumen['importes'])+1
+            total=QLabel(f'Total {"registrado" if resumen["ambiguas"] else "general"}   B/. {resumen["total_centimos"]/100:.2f}')
+            total.setObjectName('TotalCobradoHoja')
+            total.setStyleSheet('color:#79eaff; font-size:21px; font-weight:bold; border-top:1px solid #287b99; padding-top:6px;')
+            pagos.addWidget(total,fila_total,1,1,2,Qt.AlignmentFlag.AlignRight)
+            nota=QLabel('Incluye todas las ventas cobradas durante este turno.')
+            if resumen['ambiguas']:
+                nota.setText('Hay cobros antiguos sin una asignación precisa a esta hoja; no se incluyen en el total registrado.')
+            nota.setWordWrap(True)
+            nota.setStyleSheet('color:#a8bad0; font-size:12px;')
+            pagos.addWidget(nota,fila_total+1,1,1,2)
+            interior.addWidget(resumen_widget)
         cerrar = QPushButton("Cerrar detalle")
         cerrar.setMinimumHeight(52)
         cerrar.clicked.connect(self.close)

@@ -75,7 +75,7 @@ def inicializar_catalogo(sesion, productos_iniciales):
             )
         """)
         columnas_ventas = {fila[1] for fila in conexion.execute('PRAGMA table_info(ventas)')}
-        for nombre, tipo in [('metodo_pago', 'TEXT'), ('cajero_id', 'INTEGER')]:
+        for nombre, tipo in [('metodo_pago', 'TEXT'), ('cajero_id', 'INTEGER'), ('hoja_libre_id', 'INTEGER')]:
             if nombre not in columnas_ventas:
                 conexion.execute(f'ALTER TABLE ventas ADD COLUMN {nombre} {tipo}')
         columnas = {
@@ -228,13 +228,14 @@ def registrar_venta(sesion, nombre_mesa, clientes, productos, turno_id=None, *, 
                     producto_id, nombre, categoria, cantidad,
                     sesion.usuario['id'], turno_id, f'Cobro · {metodo_pago}',
                 ))
+        hoja_libre_id=None
         if es_venta_libre:
             from hojas_venta_libre import venta
-            venta(conexion,sesion.usuario,productos)
+            hoja_libre_id=venta(conexion,sesion.usuario,productos)
         conexion.execute(
-            'INSERT INTO ventas(fecha, mesa, cliente, productos, total, turno_id, metodo_pago, cajero_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+            'INSERT INTO ventas(fecha, mesa, cliente, productos, total, turno_id, metodo_pago, cajero_id, hoja_libre_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
             (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), nombre_operacion(nombre_mesa), clientes,
-             json.dumps(productos, ensure_ascii=False), total, turno_id, metodo_pago, sesion.usuario['id']),
+             json.dumps(productos, ensure_ascii=False), total, turno_id, metodo_pago, sesion.usuario['id'], hoja_libre_id),
         )
         conexion.execute('DELETE FROM pedidos_abiertos WHERE mesa = ?', (nombre_mesa,))
         conexion.execute('UPDATE clientes SET mesa = NULL WHERE mesa = ?', (nombre_mesa,))
