@@ -17,7 +17,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        arch: [aarch64, x86_64]
+        arch: ${{ fromJSON(github.event_name == 'workflow_dispatch' && '["aarch64","x86_64"]' || '["aarch64"]') }}
     env:
       QT_QPA_PLATFORM: offscreen
       PYTHONUNBUFFERED: '1'

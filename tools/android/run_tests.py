@@ -14,7 +14,10 @@ app = QApplication.instance()
 if app is not None:
     for timer in app.findChildren(QTimer):
         timer.stop()
+    app.aboutToQuit.emit()
     app.closeAllWindows()
+    for window in app.topLevelWidgets():
+        window.deleteLater()
     QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
     app.processEvents()
     del suite, result
