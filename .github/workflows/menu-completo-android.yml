@@ -92,6 +92,7 @@ jobs:
             adb exec-out screencap -p > android-horizontal.png
             adb logcat -d > android-runtime.log
             grep "ANDROID_QA_LOGIN True PAGE PaginaInicio" android-runtime.log
+            grep "ANDROID_QA_HOME_FITS True" android-runtime.log
       - name: Guardar pruebas en emulador
         if: always() && matrix.arch == 'x86_64'
         uses: actions/upload-artifact@v4

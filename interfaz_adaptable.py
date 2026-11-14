@@ -36,6 +36,7 @@ class InterfazAdaptable(QObject):
         self.rejilla.setContentsMargins(0,0,0,0);self.rejilla.setSpacing(8)
         self.layout_inicio.insertWidget(1,self.navegacion)
         self.navegacion.hide();self.copias={}
+        self.estilos_lateral={};self.estilo_panel=panel.styleSheet();self.lateral_anterior=None
         self.en_inicio=False;self.ultimo=None;self.pedidos={};self.estilos_inicio={}
         self.ventana.centralWidget().layout().setSizeConstraint(QLayout.SizeConstraint.SetNoConstraint)
         titulo.setMinimumWidth(0);titulo.setWordWrap(True)
@@ -70,10 +71,38 @@ class InterfazAdaptable(QObject):
         if not isValid(self.ventana):return
         w,h=self.ventana.width(),self.ventana.height()
         telefono=w<760 or h<500
-        self.menu.setVisible(self.paginas.isEnabled())
+        menu_en_inicio=w<h
+        self.en_inicio=menu_en_inicio
+        self.menu.setVisible(self.paginas.isEnabled() and (menu_en_inicio or self.paginas.currentWidget() is not self.inicio))
         # One scroll surface, rather than a scrollable sidebar inside Inicio.
-        self.navegacion.setVisible(telefono)
-        if telefono:self.panel.hide()
+        self.navegacion.setVisible(menu_en_inicio)
+        self.panel.setVisible(not menu_en_inicio and self.paginas.isEnabled() and self.paginas.currentWidget() is self.inicio)
+        compacto_lateral=telefono and not menu_en_inicio
+        self.panel.setMinimumWidth(164 if compacto_lateral else 232)
+        self.panel.setMaximumWidth(164 if compacto_lateral else 272)
+        if compacto_lateral!=self.lateral_anterior:
+            self.lateral_anterior=compacto_lateral
+            for boton in self.panel.findChildren(QPushButton):
+                if boton not in self.estilos_lateral:
+                    self.estilos_lateral[boton]=(boton.styleSheet(),boton.minimumHeight(),boton.maximumHeight(),boton.iconSize())
+                estilo,minimo,maximo,icono=self.estilos_lateral[boton]
+                if compacto_lateral:
+                    boton.setFixedHeight(36)
+                    boton.setStyleSheet(estilo+'QPushButton {font-size:12px; min-height:24px; max-height:24px; padding:6px 4px;}')
+                    from PySide6.QtCore import QSize
+                    boton.setIconSize(QSize(18,18))
+                else:
+                    boton.setMinimumHeight(minimo);boton.setMaximumHeight(maximo)
+                    boton.setStyleSheet(estilo);boton.setIconSize(icono)
+            if self.panel.layout():
+                self.panel.layout().setContentsMargins(6,6,6,6)
+                self.panel.layout().setSpacing(4)
+            contenido=self.panel.findChild(QWidget,'ContenidoMenu')
+            if contenido and contenido.layout():
+                contenido.layout().setContentsMargins(4,4,4,4)
+                contenido.layout().setSpacing(2)
+            for etiqueta in self.panel.findChildren(QLabel):
+                if compacto_lateral:etiqueta.setStyleSheet('font-size:10px; color:#85eaff; padding:2px;')
         visibles=[]
         for original in self.panel.findChildren(QPushButton):
             if original not in self.copias:
@@ -90,8 +119,9 @@ class InterfazAdaptable(QObject):
             if not original.isHidden():visibles.append(copia)
         for i,copia in enumerate(visibles):self.rejilla.addWidget(copia,i//2,i%2)
         self.navegacion.setFixedHeight(((len(visibles)+1)//2)*56)
-        if telefono!=self.ultimo:
-            self.ultimo=telefono
+        clave_pantalla=(telefono,menu_en_inicio)
+        if clave_pantalla!=self.ultimo:
+            self.ultimo=clave_pantalla
             for boton in self.inicio.findChildren(QPushButton):
                 if boton not in self.estilos_inicio:
                     self.estilos_inicio[boton]=(boton.styleSheet(),boton.text())
@@ -102,11 +132,17 @@ class InterfazAdaptable(QObject):
                     boton.setStyleSheet(estilo+'QPushButton { font-size: 14px; padding: 6px; min-height: 32px; }')
                 else:
                     boton.setStyleSheet(estilo);boton.setText(texto)
-            self.en_inicio=telefono
-            if not telefono:
-                self.panel.setVisible(self.paginas.currentWidget() is self.inicio)
             self.layout_inicio.setContentsMargins(10 if telefono else 28,10 if telefono else 28,10 if telefono else 28,10 if telefono else 28)
-            self.layout_inicio.setSpacing(10 if telefono else 18)
+            self.layout_inicio.setSpacing(8 if telefono else 18)
+            acciones=self.inicio.findChild(QWidget,'AccionesAdminInicio')
+            if acciones and telefono:
+                acciones.layout().setContentsMargins(12,10,12,10)
+                acciones.layout().setSpacing(6)
+                for etiqueta in acciones.findChildren(QLabel):
+                    etiqueta.setStyleSheet('font-size:18px; font-weight:bold; color:#85eaff; background:transparent; border:none;')
+                for boton in acciones.findChildren(QPushButton):
+                    boton.setFixedHeight(40)
+                    boton.setStyleSheet('QPushButton {font-size:14px; min-height:24px; max-height:24px; padding:6px; background:#112e45; color:#eaf3ff; border:2px solid #287b99; border-radius:10px;}')
             # All outer mobile pages fit the viewport width; vertical scrolling
             # remains available for long forms without sideways panning.
             for area in self.ventana.findChildren(QScrollArea):

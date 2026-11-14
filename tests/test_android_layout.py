@@ -57,7 +57,12 @@ class AndroidLayoutTest(unittest.TestCase):
 
     def test_phone_landscape_and_large_tablet_restore_full_account(self):
         self.resize(915,412)
-        self.assertTrue(self.adapter.en_inicio)
+        self.assertFalse(self.adapter.en_inicio)
+        self.pages.setCurrentWidget(self.adapter.inicio)
+        self.adapter.aplicar()
+        self.assertTrue(self.adapter.panel.isVisible())
+        self.assertTrue(self.adapter.navegacion.isHidden())
+        self.assertEqual(self.adapter.panel.width(),164)
         self.assertEqual(self.order.findChild(QSplitter,'splitter').orientation(),Qt.Orientation.Horizontal)
         self.resize(1280,800)
         self.assertFalse(self.adapter.en_inicio)
