@@ -2,7 +2,7 @@
 import os,sys
 from PySide6.QtCore import QObject,QTimer,Qt,QSysInfo
 from PySide6.QtWidgets import (QApplication,QWidget,QScrollArea,QVBoxLayout,QLayout,
-                             QSizePolicy,QSplitter,QListWidget,QLabel,QPushButton)
+                             QSizePolicy,QSplitter,QListWidget,QLabel,QPushButton,QGridLayout)
 from shiboken6 import isValid
 
 def es_android():
@@ -25,11 +25,17 @@ def hacer_acceso_desplazable(acceso):
     acceso.tarjeta.layout().setContentsMargins(16,14,16,14)
 
 class InterfazAdaptable(QObject):
-    def __init__(self,ventana,paginas,inicio,layout_inicio,panel,titulo):
+    def __init__(self,ventana,paginas,inicio,layout_inicio,panel,titulo,cabecera=None):
         super().__init__(ventana)
         self.ventana,self.paginas,self.inicio=ventana,paginas,inicio
         self.layout_inicio,self.panel=layout_inicio,panel
         self.original=panel.parentWidget().layout();self.indice=self.original.indexOf(panel)
+        self.navegacion=QWidget()
+        self.navegacion.setObjectName('NavegacionMovil')
+        self.rejilla=QGridLayout(self.navegacion)
+        self.rejilla.setContentsMargins(0,0,0,0);self.rejilla.setSpacing(8)
+        self.layout_inicio.insertWidget(1,self.navegacion)
+        self.navegacion.hide();self.copias={}
         self.en_inicio=False;self.ultimo=None;self.pedidos={};self.estilos_inicio={}
         self.ventana.centralWidget().layout().setSizeConstraint(QLayout.SizeConstraint.SetNoConstraint)
         titulo.setMinimumWidth(0);titulo.setWordWrap(True)
@@ -37,9 +43,17 @@ class InterfazAdaptable(QObject):
         # A phone must always expose a way back to the complete navigation.
         self.menu=QPushButton('Menú',ventana)
         self.menu.setObjectName('btnMenuAndroid')
-        self.menu.setMinimumSize(96,48)
+        self.menu.setFixedSize(72,44)
         self.menu.clicked.connect(self.abrir_menu)
-        (titulo.parentWidget().layout() if titulo.parentWidget() else ventana.centralWidget().layout()).insertWidget(0,self.menu)
+        def fila_de(layout):
+            if layout.indexOf(titulo)>=0:return layout
+            for i in range(layout.count()):
+                hijo=layout.itemAt(i).layout()
+                if hijo:
+                    encontrado=fila_de(hijo)
+                    if encontrado:return encontrado
+        fila=fila_de(ventana.centralWidget().layout())
+        (cabecera or fila or ventana.centralWidget().layout()).insertWidget(0,self.menu)
         self.temporizador=QTimer(self);self.temporizador.setInterval(250)
         self.temporizador.timeout.connect(self.aplicar)
         QApplication.instance().aboutToQuit.connect(self.temporizador.stop)
@@ -57,13 +71,25 @@ class InterfazAdaptable(QObject):
         w,h=self.ventana.width(),self.ventana.height()
         telefono=w<760 or h<500
         self.menu.setVisible(self.paginas.isEnabled())
-        if telefono and self.en_inicio:
-            # The outer Inicio scroll cannot infer the height of a nested scroll.
-            # Reserve enough space for every permitted navigation action.
-            botones=[b for b in self.panel.findChildren(QPushButton) if not b.isHidden()]
-            self.panel.setMinimumHeight(sum(max(64,b.sizeHint().height()) for b in botones)+100)
-        elif not telefono:
-            self.panel.setMinimumHeight(0)
+        # One scroll surface, rather than a scrollable sidebar inside Inicio.
+        self.navegacion.setVisible(telefono)
+        if telefono:self.panel.hide()
+        visibles=[]
+        for original in self.panel.findChildren(QPushButton):
+            if original not in self.copias:
+                copia=QPushButton(self.navegacion)
+                copia.setMinimumWidth(0)
+                copia.setSizePolicy(QSizePolicy.Policy.Ignored,QSizePolicy.Policy.Fixed)
+                copia.setFixedHeight(48)
+                copia.setStyleSheet('QPushButton {font-size:14px; padding:6px; min-height:0; border:1px solid #23d7f4; background:#11283f; color:#eaf3ff; border-radius:9px;} QPushButton:pressed {background:#1b4263;}')
+                copia.clicked.connect(lambda checked=False,b=original:b.click())
+                self.copias[original]=copia
+            copia=self.copias[original]
+            copia.setText(original.text());copia.setEnabled(original.isEnabled())
+            copia.setVisible(not original.isHidden())
+            if not original.isHidden():visibles.append(copia)
+        for i,copia in enumerate(visibles):self.rejilla.addWidget(copia,i//2,i%2)
+        self.navegacion.setFixedHeight(((len(visibles)+1)//2)*56)
         if telefono!=self.ultimo:
             self.ultimo=telefono
             for boton in self.inicio.findChildren(QPushButton):
@@ -73,20 +99,21 @@ class InterfazAdaptable(QObject):
                 if telefono:
                     if texto.startswith('Cuentas abiertas'):boton.setText('Cuentas abiertas\nMesas y clientes')
                     elif texto.startswith('Barra\n'):boton.setText('Barra\nCuentas individuales')
-                    boton.setStyleSheet(estilo+'QPushButton { font-size: 16px; padding: 10px; min-height: 44px; }')
+                    boton.setStyleSheet(estilo+'QPushButton { font-size: 14px; padding: 6px; min-height: 32px; }')
                 else:
                     boton.setStyleSheet(estilo);boton.setText(texto)
-            if telefono and not self.en_inicio:
-                visible=self.panel.isVisible()
-                self.original.removeWidget(self.panel)
-                self.panel.setMinimumWidth(0);self.panel.setMaximumWidth(16777215)
-                self.layout_inicio.insertWidget(1,self.panel)
-                self.panel.setVisible(visible);self.en_inicio=True
-            elif not telefono and self.en_inicio:
-                visible=self.panel.isVisible();self.layout_inicio.removeWidget(self.panel)
-                self.panel.setMinimumWidth(200);self.panel.setMaximumWidth(250)
-                self.original.insertWidget(self.indice,self.panel)
-                self.panel.setVisible(visible);self.en_inicio=False
+            self.en_inicio=telefono
+            if not telefono:
+                self.panel.setVisible(self.paginas.currentWidget() is self.inicio)
+            self.layout_inicio.setContentsMargins(10 if telefono else 28,10 if telefono else 28,10 if telefono else 28,10 if telefono else 28)
+            self.layout_inicio.setSpacing(10 if telefono else 18)
+            # All outer mobile pages fit the viewport width; vertical scrolling
+            # remains available for long forms without sideways panning.
+            for area in self.ventana.findChildren(QScrollArea):
+                if area.widget() and telefono:
+                    area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+                    area.widget().setMinimumWidth(0)
+                    area.widget().setSizePolicy(QSizePolicy.Policy.Ignored,QSizePolicy.Policy.Preferred)
             self.ventana.layout().setSizeConstraint(QLayout.SizeConstraint.SetNoConstraint)
             self.paginas.setMinimumSize(0,0)
             for i in range(self.paginas.count()):
@@ -108,6 +135,6 @@ class InterfazAdaptable(QObject):
             splitter.setOrientation(Qt.Orientation.Vertical if telefono and h>w else Qt.Orientation.Horizontal)
             splitter.setSizes([max(200,h-260),200] if telefono and h>w else [max(200,w-230),210] if telefono else [1200,400])
 
-def instalar(ventana,paginas,inicio,layout_inicio,panel,titulo):
+def instalar(ventana,paginas,inicio,layout_inicio,panel,titulo,cabecera=None):
     if es_android():
-        return InterfazAdaptable(ventana,paginas,inicio,layout_inicio,panel,titulo)
+        return InterfazAdaptable(ventana,paginas,inicio,layout_inicio,panel,titulo,cabecera)

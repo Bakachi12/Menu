@@ -71,7 +71,7 @@ def main():
     config.read(spec)
     settings = {
         'title': 'Tisamar Menu', 'package.name': 'menu', 'package.domain': 'pa.tisamar',
-        'version': '0.1.3', 'source.include_exts': 'py,png,jpg,jpeg,ui,html,json,js',
+        'version': '0.1.4', 'source.include_exts': 'py,png,jpg,jpeg,ui,html,json,js',
         'source.exclude_exts': 'db,sqlite,sqlite3,exe', 'orientation': 'portrait,landscape',
         'android.permissions': 'INTERNET,ACCESS_NETWORK_STATE',
         'android.accept_sdk_license': 'True',

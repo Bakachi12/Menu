@@ -1,4 +1,5 @@
 """Presentación de configuración y conexión de dispositivos."""
+from interfaz_adaptable import es_android
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QGridLayout, QPushButton, QLabel, QApplication, QSizePolicy
 
 
@@ -13,7 +14,7 @@ class AccesosConfiguracion(QWidget):
         self.distribuir()
 
     def distribuir(self):
-        columnas = 2 if self.width() >= 800 else 1
+        columnas = 2 if self.width() >= (340 if es_android() else 800) else 1
         if columnas == self.columnas:
             return
         self.columnas = columnas
@@ -45,6 +46,8 @@ def organizar_configuracion(layout):
             widget.setMinimumHeight(116)
             widget.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
             widget.setStyleSheet('QPushButton { text-align: left; padding: 18px 22px; font-size: 18px; border: 1px solid #277c9e; border-radius: 16px; background: #112b45; color: #f8f0dc; min-height: 86px; } QPushButton:hover { background: #17415e; border-color: #ff69d5; }')
+            if es_android():
+                widget.setStyleSheet("QPushButton {font-size:14px; padding:8px; min-height:36px; background:#112b45; color:#eaf3ff; border:1px solid #23d7f4; border-radius:9px;}")
             layout.removeWidget(widget)
             botones.insert(0, widget)
     ayuda = QLabel('Elige qué quieres configurar.')

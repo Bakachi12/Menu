@@ -2315,6 +2315,7 @@ def ajustar_navegacion():
     pagina = paginas.currentWidget()
     panel_lateral.setVisible(
         sesion.usuario is not None and pagina == pagina_inicio
+        and not getattr(globals().get("adaptacion_android"), "en_inicio", False)
     )
     btn_regreso_pedido.setVisible(
         pagina != pagina_inicio and sesion.usuario is not None and sesion.usuario.get('rol') != 'cocinero'
@@ -2824,7 +2825,7 @@ for pagina_larga in (pagina_configuracion, pagina_dispositivos, pagina_usuarios,
 
 
 from interfaz_adaptable import instalar
-adaptacion_android = instalar(ventana,paginas,pagina_inicio,layout_inicio,panel_lateral,titulo_pagina)
+adaptacion_android = instalar(ventana,paginas,pagina_inicio,layout_inicio,panel_lateral,titulo_pagina,fila_titulo)
 acceso = DialogoAcceso(sesion, ventana)
 
 def cerrar_sesion():

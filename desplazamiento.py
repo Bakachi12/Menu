@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
     QComboBox, QLineEdit, QScroller, QScrollerProperties, QWidget,
 )
 from shiboken6 import isValid
+from interfaz_adaptable import es_android
 
 
 class DesplazamientoGlobal(QObject):
@@ -32,7 +33,10 @@ class DesplazamientoGlobal(QObject):
             area.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
             area.setHorizontalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
         superficie = area.viewport()
-        QScroller.grabGesture(superficie, QScroller.ScrollerGestureType.TouchGesture)
+        # Android synthesizes mouse input for QWidget children. Let our single
+        # drag handler own that sequence, including gestures starting on buttons.
+        if not es_android():
+            QScroller.grabGesture(superficie, QScroller.ScrollerGestureType.TouchGesture)
         desplazador = QScroller.scroller(superficie)
         propiedades = desplazador.scrollerProperties()
         propiedades.setScrollMetric(QScrollerProperties.ScrollMetric.VerticalOvershootPolicy,
@@ -101,7 +105,7 @@ class DesplazamientoGlobal(QObject):
         if tipo not in (QEvent.Type.MouseButtonPress, QEvent.Type.MouseMove, QEvent.Type.MouseButtonRelease):
             return False
         # El gesto táctil nativo administra sus propios eventos sintetizados.
-        if evento.source() != Qt.MouseEventSource.MouseEventNotSynthesized:
+        if not es_android() and evento.source() != Qt.MouseEventSource.MouseEventNotSynthesized:
             if tipo == QEvent.Type.MouseButtonPress:
                 self.origen_tactil = objeto
                 self.deslizo_tactil = False

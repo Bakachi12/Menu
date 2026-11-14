@@ -10,6 +10,7 @@ from PySide6.QtUiTools import QUiLoader
 from PySide6.QtWidgets import QGridLayout, QHBoxLayout, QLabel, QListWidgetItem, QPushButton, QSizePolicy, QVBoxLayout, QWidget
 from clientes import centimos, clave_producto
 from estilos import BOTON_PRODUCTO
+from interfaz_adaptable import es_android
 
 def cargar_pantalla(carpeta, nombre_archivo):
     archivo = QFile(str(carpeta / nombre_archivo))
@@ -102,22 +103,24 @@ def poner_imagen_producto(boton, producto):
         return
 
     boton.setText("")
-    boton.setFixedHeight(224)
-    boton.setStyleSheet(BOTON_PRODUCTO + "QPushButton { padding: 0px; min-height: 224px; max-height: 224px; }")
+    compacto=es_android() and boton.window().width()<760
+    alto=152 if compacto else 224
+    boton.setFixedHeight(alto)
+    boton.setStyleSheet(BOTON_PRODUCTO + f"QPushButton {{ padding: 0px; min-height: {alto}px; max-height: {alto}px; }}")
     boton.setAccessibleName(
         f"{producto['nombre']}, B/.{producto['precio']:.2f}"
     )
 
     distribucion = QVBoxLayout(boton)
-    distribucion.setContentsMargins(12, 12, 12, 12)
+    distribucion.setContentsMargins(8, 8, 8, 8)
     distribucion.setSpacing(6)
 
     foto = QLabel()
-    foto.setFixedHeight(100)
+    foto.setFixedHeight(64 if compacto else 100)
     foto.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
     foto.setPixmap(
         imagen.scaled(
-            150, 100,
+            120 if compacto else 150, 64 if compacto else 100,
             Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation
         )
@@ -127,7 +130,7 @@ def poner_imagen_producto(boton, producto):
         f"{producto['nombre']}\nB/.{producto['precio']:.2f}"
     )
     texto.setWordWrap(True)
-    texto.setMinimumHeight(64)
+    texto.setMinimumHeight(48 if compacto else 64)
     texto.setTextFormat(Qt.TextFormat.PlainText)
 
     for etiqueta in (foto, texto):
@@ -143,6 +146,7 @@ def poner_imagen_producto(boton, producto):
             font-weight: bold;
             padding: 0px;
         """)
+        if compacto:etiqueta.setStyleSheet(etiqueta.styleSheet()+"font-size:14px;")
         distribucion.addWidget(etiqueta)
 
 

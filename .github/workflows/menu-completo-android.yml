@@ -77,16 +77,22 @@ jobs:
             sleep 20
             adb shell pidof pa.tisamar.menu
             adb exec-out screencap -p > android-login.png
+            adb shell am force-stop pa.tisamar.menu
+            adb shell run-as pa.tisamar.menu cat files/app/main.py > qa-main.py
+            python tools/android/qa_prepare_login.py
+            adb push qa-main.py /data/local/tmp/qa-main.py
+            adb shell run-as pa.tisamar.menu cp /data/local/tmp/qa-main.py files/app/main.py
+            adb shell monkey -p pa.tisamar.menu 1
+            sleep 20
             adb shell input tap 920 640
-            adb shell input tap 400 1470
-            adb shell input text Admin
-            adb shell input keyevent 66
-            sleep 8
-            adb shell input tap 500 1720
-            sleep 8
-            adb shell pidof pa.tisamar.menu
+            sleep 2
             adb exec-out screencap -p > android-inicio.png
+            adb shell settings put system accelerometer_rotation 0
+            adb shell settings put system user_rotation 1
+            sleep 4
+            adb exec-out screencap -p > android-horizontal.png
             adb logcat -d > android-runtime.log
+            grep "ANDROID_QA_LOGIN True PAGE PaginaInicio" android-runtime.log
       - name: Guardar pruebas en emulador
         if: always() && matrix.arch == 'x86_64'
         uses: actions/upload-artifact@v4
@@ -95,6 +101,7 @@ jobs:
           path: |
             android-login.png
             android-inicio.png
+            android-horizontal.png
             android-runtime.log
           if-no-files-found: ignore
       - name: Guardar diagnóstico de compilación
