@@ -11,14 +11,21 @@ def editar_ficha(ventana, gestion, identificador):
     if not cliente: return False
     d=DialogoIntegrado(ventana);d.setProperty('compacto',True);d.setWindowTitle('Editar cliente')
     layout=QVBoxLayout(d)
-    campos={}
-    for clave,titulo in [('nombre','Nombre'),('correo','Correo (opcional)'),('telefono','Teléfono (opcional)')]:
-        layout.addWidget(QLabel(titulo))
+    from interfaz_adaptable import es_android
+    compacto=es_android()
+    from PySide6.QtWidgets import QGridLayout,QWidget
+    campos={};rejilla=QGridLayout()
+    if compacto:layout.addLayout(rejilla)
+    for indice,(clave,titulo) in enumerate([('nombre','Nombre'),('correo','Correo (opcional)'),('telefono','Teléfono (opcional)')]):
+        contenedor=QWidget();fila=QVBoxLayout(contenedor);fila.setContentsMargins(0,0,0,0)
+        destino=fila if compacto else layout
+        destino.addWidget(QLabel(titulo))
         campo=QLineEdit(cliente.get(clave,''));campo.setMaxLength(254 if clave=='correo' else 80)
-        layout.addWidget(campo);campos[clave]=campo
-    frecuente=QCheckBox('Cliente frecuente');frecuente.setChecked(cliente.get('frecuente',False));layout.addWidget(frecuente)
+        destino.addWidget(campo);campos[clave]=campo
+        if compacto:rejilla.addWidget(contenedor,indice//2,indice%2)
+    frecuente=QCheckBox('Cliente frecuente');frecuente.setChecked(cliente.get('frecuente',False));rejilla.addWidget(frecuente,1,1) if compacto else layout.addWidget(frecuente)
     layout.addWidget(QLabel('Notas y preferencias (opcional)'))
-    notas=QPlainTextEdit(cliente.get('notas',''));notas.setMaximumHeight(100);layout.addWidget(notas)
+    notas=QPlainTextEdit(cliente.get('notas',''));notas.setMaximumHeight(56 if compacto else 100);layout.addWidget(notas)
     estado=QLabel();estado.setWordWrap(True);layout.addWidget(estado)
     guardar=QPushButton('Guardar cliente');layout.addWidget(guardar)
     def aceptar():

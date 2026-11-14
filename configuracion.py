@@ -132,15 +132,24 @@ class PaginaMiCuenta(QWidget):
             campo.setEchoMode(QLineEdit.EchoMode.Password)
             campo.setMaxLength(128)
         self.nueva.setPlaceholderText('Déjala vacía para conservar la actual')
-        formulario = QVBoxLayout()
+        from interfaz_adaptable import es_android
+        from PySide6.QtWidgets import QGridLayout
+        compacto=es_android()
+        formulario = QGridLayout() if compacto else QVBoxLayout()
+        campos_cuenta=[]
         for texto, campo in (('Usuario para iniciar sesión', self.usuario),
                              ('Contraseña actual · necesaria para guardar', self.actual),
                              ('Nueva contraseña · opcional', self.nueva),
                              ('Repetir nueva contraseña', self.confirmacion)):
             etiqueta = QLabel(texto)
             etiqueta.setWordWrap(True)
-            formulario.addWidget(etiqueta)
-            formulario.addWidget(campo)
+            if compacto:
+                indice=len(campos_cuenta);campos_cuenta.append(campo)
+                formulario.addWidget(etiqueta,(indice//2)*2,indice%2)
+                formulario.addWidget(campo,(indice//2)*2+1,indice%2)
+            else:
+                formulario.addWidget(etiqueta)
+                formulario.addWidget(campo)
         layout.addLayout(formulario)
         self.guardar_boton = QPushButton('Guardar mi cuenta')
         self.guardar_boton.clicked.connect(self.guardar)

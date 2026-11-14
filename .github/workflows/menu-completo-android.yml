@@ -89,6 +89,8 @@ jobs:
             adb logcat -d > android-runtime.log
             grep "ANDROID_QA_LOGIN True PAGE PaginaInicio" android-runtime.log
             grep "ANDROID_QA_HOME_FITS True" android-runtime.log
+            grep "ANDROID_QA_PAGES_FIT True" android-runtime.log
+            for page in pagina_configuracion pagina_productos pagina_usuarios pagina_clientes pagina_inventario pagina_historial pagina_config_mesas pagina_mi_cuenta; do adb exec-out run-as pa.tisamar.menu cat files/app/android-qa-$page.png > android-qa-$page.png; done
       - name: Guardar pruebas en emulador
         if: always() && matrix.arch == 'x86_64'
         uses: actions/upload-artifact@v4
@@ -98,6 +100,7 @@ jobs:
             android-login.png
             android-inicio.png
             android-horizontal.png
+            android-qa-*.png
             android-runtime.log
           if-no-files-found: ignore
       - name: Guardar diagnóstico de compilación

@@ -14,6 +14,7 @@ class EditorPreparaciones(QWidget):
         layout.setSpacing(8)
         ayuda = QLabel('Agrega cada preparación y su recargo. Ejemplo: Sin vegetales + B/. 0.00 o Extra queso + B/. 0.40. Elige una opción al pedir.')
         ayuda.setWordWrap(True)
+        ayuda.setProperty("ayudaCompacta",True)
         layout.addWidget(ayuda)
         self.lista = QVBoxLayout()
         self.lista.setSpacing(8)

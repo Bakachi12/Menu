@@ -1114,6 +1114,9 @@ class PaginaInventario(QWidget):
         subtitulo = QLabel("Asigna productos al cajero y controla cada turno.")
         subtitulo.setObjectName("SubtituloInventario")
         layout.addWidget(subtitulo)
+        from interfaz_adaptable import es_android
+        if es_android():
+            titulo.hide();subtitulo.hide()
         self.estado = QLabel()
         self.estado.setObjectName("EstadoInventario")
         self.estado.setWordWrap(True)
@@ -1157,6 +1160,7 @@ class PaginaInventario(QWidget):
         if descripcion:
             ayuda = QLabel(descripcion)
             ayuda.setObjectName("SubtituloInventario")
+            ayuda.setProperty("ayudaCompacta",True)
             ayuda.setWordWrap(True)
             layout.addWidget(ayuda)
         return tarjeta, layout
@@ -1328,7 +1332,21 @@ class PaginaInventario(QWidget):
                 "Pide al administrador que te asigne un turno. Al iniciar, verifica el conteo físico.",
             )
             self.contenido_layout.addWidget(tarjeta)
-        self.contenido_layout.addStretch(1)
+        from interfaz_adaptable import es_android
+        tarjetas=[self.contenido_layout.itemAt(i).widget() for i in range(self.contenido_layout.count()) if self.contenido_layout.itemAt(i).widget()]
+        if es_android() and len(tarjetas)>1:
+            from PySide6.QtWidgets import QTabWidget
+            pestanas=QTabWidget()
+            pestanas.setDocumentMode(True)
+            for tarjeta in tarjetas:
+                self.contenido_layout.removeWidget(tarjeta)
+                texto=tarjeta.findChildren(QLabel)[0].text()
+                nombre=('Entradas' if texto.startswith('Registrar inventario') else 'Existencias' if texto=='Inventario disponible' else 'Asignación' if texto.startswith('Asignar') else texto)
+                area=QScrollArea();area.setWidgetResizable(True);area.setWidget(tarjeta)
+                pestanas.addTab(area,nombre)
+            self.contenido_layout.addWidget(pestanas,1)
+        else:
+            self.contenido_layout.addStretch(1)
 
     def abrir_seccion_admin(self, modo):
         self.sesion.exigir_admin()
@@ -1451,13 +1469,23 @@ class PaginaInventario(QWidget):
         self.controles_cantidades = {}
         if not productos:
             layout.addWidget(QLabel("Agrega productos en Productos y registra una entrada antes de asignar el turno."))
+        filas_layout=layout
+        from interfaz_adaptable import es_android
+        from PySide6.QtWidgets import QSizePolicy
+        if es_android():
+            filas_scroll=QScrollArea();filas_scroll.setWidgetResizable(True)
+            filas_scroll.setMinimumHeight(0)
+            filas_scroll.setSizePolicy(QSizePolicy.Policy.Expanding,QSizePolicy.Policy.Ignored)
+            filas_contenido=QWidget();filas_layout=QVBoxLayout(filas_contenido)
+            filas_layout.setContentsMargins(0,0,0,0)
+            filas_scroll.setWidget(filas_contenido);layout.addWidget(filas_scroll,1)
         for producto_id, nombre, categoria in productos:
             disponible = disponibles.get(producto_id, 0)
             cantidad = self._campo_cantidad(disponible)
             self.controles_cantidades[producto_id] = cantidad
             cantidad.setPlaceholderText("Cantidad a entregar")
             self._agregar_fila_producto(
-                layout, f"{nombre} · {categoria}", cantidad, f"Disponible: {disponible}"
+                filas_layout, f"{nombre} · {categoria}", cantidad, f"Disponible: {disponible}"
             )
         self.btn_asignar = self._boton(
             "Asignar siguiente cajero" if turno_cerrado_id

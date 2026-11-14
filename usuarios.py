@@ -534,6 +534,23 @@ class PaginaUsuarios(QWidget):
         eliminar = QPushButton('Eliminar usuario seleccionado')
         eliminar.clicked.connect(self.eliminar_seleccionado)
         layout.addWidget(eliminar)
+        from interfaz_adaptable import es_android
+        if es_android():
+            descripcion.hide()
+            titulo.setToolTip(descripcion.text())
+            # Form and saved users share the available landscape width.
+            from PySide6.QtWidgets import QHBoxLayout
+            layout.removeItem(formulario)
+            for widget in (self.crear,self.mensaje,self.lista,pin,eliminar):layout.removeWidget(widget)
+            columnas=QHBoxLayout()
+            izquierda=QVBoxLayout();derecha=QVBoxLayout()
+            for campo,texto in ((self.nombre,'Usuario'),(self.nombre_completo,'Nombre'),(self.confirmacion,'Repetir clave'),(self.password,'Contraseña'),(self.rol,'Rol')):
+                etiqueta=formulario.labelForField(campo)
+                if etiqueta:etiqueta.setText(texto)
+            izquierda.addLayout(formulario);izquierda.addWidget(self.crear);izquierda.addWidget(self.mensaje);izquierda.addStretch()
+            derecha.addWidget(self.lista,1);derecha.addWidget(pin);derecha.addWidget(eliminar)
+            columnas.addLayout(izquierda,1);columnas.addLayout(derecha,1)
+            layout.addLayout(columnas,1)
 
     def eliminar_seleccionado(self):
         from dialogos import MensajesIntegrados

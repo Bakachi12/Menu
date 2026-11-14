@@ -82,6 +82,9 @@ class DialogoIntegrado(QDialog):
         self._cubierta_integrada = cubierta
         ventana.installEventFilter(self)
         cubierta.setGeometry(ventana.rect())
+        from contenido_adaptable import adaptar_contenido
+        adaptar_contenido(cubierta,ventana.width(),ventana.height())
+        self.setMinimumSize(0,0)
         cubierta.show()
         cubierta.raise_()
         self.show()

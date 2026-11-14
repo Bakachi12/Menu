@@ -1578,6 +1578,23 @@ def configurar_menu_producto():
     guardar = QPushButton("Guardar configuración")
     guardar.clicked.connect(dialogo.accept)
     layout.addWidget(guardar)
+    from interfaz_adaptable import es_android
+    if es_android():
+        anteriores=[]
+        while layout.count():
+            item=layout.takeAt(0)
+            if item.widget():anteriores.append(item.widget())
+        for widget in anteriores:widget.hide()
+        opciones_plato=QHBoxLayout()
+        lleva.show();cantidad_lados.show()
+        opciones_plato.addWidget(lleva,1);opciones_plato.addWidget(QLabel('Acompañamientos:'));opciones_plato.addWidget(cantidad_lados)
+        layout.addLayout(opciones_plato)
+        layout.addWidget(QLabel('Preparaciones y recargos'))
+        area_variantes=QScrollArea();area_variantes.setWidgetResizable(True)
+        area_variantes.setSizePolicy(QSizePolicy.Policy.Expanding,QSizePolicy.Policy.Ignored)
+        area_variantes.setWidget(variantes);variantes.show()
+        layout.addWidget(area_variantes,1)
+        guardar.show();layout.addWidget(guardar)
     if dialogo.exec() != QDialog.DialogCode.Accepted:
         return
     try:
@@ -1655,9 +1672,11 @@ pagina_productos.setStyleSheet(CATALOGO + ESTILO_SELECTORES)
 # Distribución táctil: formulario y catálogo, adaptados al ancho disponible.
 layout_productos.setContentsMargins(16, 16, 16, 16)
 titulo_productos = QLabel("Tu menú")
+titulo_productos.setProperty("ayudaCompacta",True)
 titulo_productos.setStyleSheet("font-size: 28px; font-weight: bold; color: #eaf3ff;")
 layout_productos.addWidget(titulo_productos)
 subtitulo_productos = QLabel("Añade productos y organiza las opciones de cada plato.")
+subtitulo_productos.setProperty("ayudaCompacta",True)
 layout_productos.addWidget(subtitulo_productos)
 from PySide6.QtWidgets import QButtonGroup
 selector_menu = QHBoxLayout()
@@ -1736,6 +1755,25 @@ formulario_tactil.addWidget(btn_guardar_producto)
 mensaje_producto.setWordWrap(True)
 formulario_tactil.addWidget(mensaje_producto)
 formulario_tactil.addStretch()
+from interfaz_adaptable import es_android
+if es_android():
+    elementos=[]
+    while formulario_tactil.count():
+        item=formulario_tactil.takeAt(0)
+        if item.widget():elementos.append(item.widget())
+    titulo_formulario.hide()
+    campos_compactos=QGridLayout()
+    # Keep name/price side by side, with product type and actions beneath.
+    for widget,fila,columna,ancho in (
+        (elementos[1],0,0,1),(elementos[3],0,1,1),
+        (txt_nombre_producto,1,0,1),(txt_precio_producto,1,1,1),
+        (elementos[5],2,0,2),(txt_categoria_producto,3,0,2),
+        (btn_elegir_imagen,4,0,1),(btn_guardar_producto,4,1,1),
+        (vista_imagen_producto,5,0,2),(mensaje_producto,6,0,2)):
+        campos_compactos.addWidget(widget,fila,columna,1,ancho)
+    vista_imagen_producto.setProperty('vistaPreviaProducto',True)
+    formulario_tactil.addLayout(campos_compactos)
+    formulario_tactil.addStretch()
 
 tarjeta_catalogo = QWidget()
 tarjeta_catalogo.setProperty("tarjeta", True)
@@ -1748,6 +1786,7 @@ catalogo_tactil.addWidget(titulo_catalogo)
 ayuda_catalogo = QLabel("Selecciona un producto para gestionar sus opciones. Cambia entre Bar y Cocina con los botones de arriba.")
 ayuda_catalogo.setWordWrap(True)
 catalogo_tactil.addWidget(ayuda_catalogo)
+if es_android():ayuda_catalogo.hide()
 lista_catalogo.setMinimumHeight(260)
 lista_catalogo.setWordWrap(True)
 lista_catalogo.setSpacing(4)
@@ -1827,7 +1866,8 @@ class AdaptarPanelesProductos(QObject):
                 or not isValid(paneles_productos)):
             return False
         if evento.type() in (QEvent.Type.Resize, QEvent.Type.Show):
-            direccion = (QBoxLayout.Direction.TopToBottom if objeto.width() < 900
+            from interfaz_adaptable import es_android
+            direccion = (QBoxLayout.Direction.TopToBottom if objeto.width() < (680 if es_android() else 900)
                          else QBoxLayout.Direction.LeftToRight)
             if paneles_productos.direction() != direccion:
                 paneles_productos.setDirection(direccion)
@@ -2826,6 +2866,7 @@ for pagina_larga in (pagina_configuracion, pagina_dispositivos, pagina_usuarios,
 
 from interfaz_adaptable import instalar
 adaptacion_android = instalar(ventana,paginas,pagina_inicio,layout_inicio,panel_lateral,titulo_pagina,fila_titulo)
+if es_android():ventana.statusBar().hide()
 acceso = DialogoAcceso(sesion, ventana)
 
 def cerrar_sesion():

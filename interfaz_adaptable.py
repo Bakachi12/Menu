@@ -11,7 +11,8 @@ def es_android():
             or os.environ.get('MENU_ANDROID_TEST')=='1')
 
 def medidas_dialogo(ventana,ancho=660,alto=620):
-    margen=8 if es_android() else 24
+    if es_android():return max(160,ventana.width()-16),max(160,ventana.height()-16)
+    margen=24
     return min(ancho,max(160,ventana.width()-2*margen)),min(alto,max(160,ventana.height()-2*margen))
 
 def hacer_acceso_desplazable(acceso):
@@ -157,6 +158,12 @@ class InterfazAdaptable(QObject):
                 pagina.setMinimumSize(0,0)
                 pagina.setSizePolicy(QSizePolicy.Policy.Ignored,QSizePolicy.Policy.Ignored)
                 if pagina.layout():pagina.layout().setSizeConstraint(QLayout.SizeConstraint.SetNoConstraint)
+        from contenido_adaptable import adaptar_contenido
+        actual=self.paginas.currentWidget()
+        if actual is not None and actual is not self.inicio:
+            adaptar_contenido(actual,w,h)
+        for cubierta in self.ventana.findChildren(QWidget,'CubiertaFormulario'):
+            if cubierta.isVisible():adaptar_contenido(cubierta,w,h)
         for splitter in self.ventana.findChildren(QSplitter,'splitter'):
             clave=(telefono,w>h)
             if self.pedidos.get(splitter)==clave:continue
