@@ -39,15 +39,17 @@ jobs:
             sleep 2
             adb shell input tap 400 1470
             sleep 2
-            adb shell input keycombination 59 29
+            adb shell input tap 60 2000
             sleep 1
-            adb shell input text d
+            adb shell input tap 108 1840
             sleep 1
-            adb shell input text m
+            adb shell input tap 324 1840
             sleep 1
-            adb shell input text i
+            adb shell input tap 918 2000
             sleep 1
-            adb shell input text n
+            adb shell input tap 810 1680
+            sleep 1
+            adb shell input tap 810 2000
             sleep 1
             adb shell input keyevent 4
             sleep 3
