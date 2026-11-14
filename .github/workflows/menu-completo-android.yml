@@ -34,7 +34,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential git zip unzip autoconf automake libtool pkg-config cmake ninja-build libffi-dev libssl-dev zlib1g-dev libncurses-dev libtinfo6 libgl1 libegl1 libxkbcommon0
           python -m pip install --upgrade pip
-          python -m pip install PySide6==6.12.0 buildozer==1.6.0 cython==0.29.33 setuptools
+          python -m pip install PySide6==6.12.0 buildozer==1.6.0 cython==0.29.33 setuptools jinja2 pkginfo tqdm
       - name: Android SDK y NDK
         run: sdkmanager 'platform-tools' 'platforms;android-35' 'build-tools;35.0.0' 'ndk;28.2.13676358'
       - name: Pruebas de la aplicación completa
