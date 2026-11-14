@@ -14,7 +14,7 @@ class AccesosConfiguracion(QWidget):
         self.distribuir()
 
     def distribuir(self):
-        columnas = 2 if self.width() >= (340 if es_android() else 800) else 1
+        columnas = 2 if self.width() >= (280 if es_android() else 800) else 1
         if columnas == self.columnas:
             return
         self.columnas = columnas
@@ -41,9 +41,9 @@ def organizar_configuracion(layout):
         widget = layout.itemAt(i).widget()
         if isinstance(widget, QPushButton) and widget.text() in descripciones:
             titulo, ayuda = descripciones[widget.text()]
-            widget.setText(titulo + '\n' + ayuda)
+            widget.setText(('Dispositivos' if titulo=='Dispositivos móviles' else titulo) if es_android() else titulo + '\n' + ayuda)
             widget.setAccessibleName(titulo + '. ' + ayuda)
-            widget.setMinimumHeight(116)
+            widget.setMinimumHeight(52 if es_android() else 116)
             widget.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
             widget.setStyleSheet('QPushButton { text-align: left; padding: 18px 22px; font-size: 18px; border: 1px solid #277c9e; border-radius: 16px; background: #112b45; color: #f8f0dc; min-height: 86px; } QPushButton:hover { background: #17415e; border-color: #ff69d5; }')
             if es_android():
@@ -51,6 +51,8 @@ def organizar_configuracion(layout):
             layout.removeWidget(widget)
             botones.insert(0, widget)
     ayuda = QLabel('Elige qué quieres configurar.')
+    ayuda.setWordWrap(True)
+    if es_android():ayuda.setStyleSheet('font-size:16px; color:#eaf3ff;')
     layout.insertWidget(1, ayuda)
     layout.insertWidget(2, AccesosConfiguracion(botones))
 
