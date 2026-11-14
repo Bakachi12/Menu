@@ -73,6 +73,7 @@ jobs:
           script: |
             adb install -r apk-output/Tisamar-Menu-x86_64-debug.apk
             adb logcat -c
+            adb shell settings put secure immersive_mode_confirmations confirmed
             adb shell monkey -p pa.tisamar.menu 1
             sleep 20
             adb shell pidof pa.tisamar.menu
@@ -84,8 +85,6 @@ jobs:
             adb shell run-as pa.tisamar.menu cp /data/local/tmp/qa-main.py files/app/main.py
             adb shell monkey -p pa.tisamar.menu 1
             sleep 20
-            adb shell input tap 920 640
-            sleep 2
             adb exec-out screencap -p > android-inicio.png
             adb shell settings put system accelerometer_rotation 0
             adb shell settings put system user_rotation 1
