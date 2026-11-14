@@ -59,7 +59,7 @@ def main():
     wheels.mkdir(exist_ok=True)
     pyside = download_wheel('PySide6', args.arch, wheels)
     shiboken = download_wheel('shiboken6', args.arch, wheels)
-    command = ['pyside6-android-deploy', '--init', '--force', '--verbose',
+    command = ['pyside6-android-deploy', '--init', '--force', '--verbose', '--keep-deployment-files',
                '--name', 'TisamarMenu', '--wheel-pyside', str(pyside),
                '--wheel-shiboken', str(shiboken), '--sdk-path', args.sdk,
                '--ndk-path', args.ndk, '--extra-modules', 'Core,Gui,Widgets,UiTools,Network,OpenGL']
