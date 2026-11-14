@@ -2823,6 +2823,8 @@ for pagina_larga in (pagina_configuracion, pagina_dispositivos, pagina_usuarios,
     permitir_desplazamiento(pagina_larga)
 
 
+from interfaz_adaptable import instalar
+adaptacion_android = instalar(ventana,paginas,pagina_inicio,layout_inicio,panel_lateral,titulo_pagina)
 acceso = DialogoAcceso(sesion, ventana)
 
 def cerrar_sesion():

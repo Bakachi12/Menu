@@ -241,25 +241,30 @@ class PaginaClientes(QWidget):
             if self.al_barra is not None and self.al_mesa is not None:
                 item.setText("")
                 fila = QWidget()
-                caja = QHBoxLayout(fila)
+                from interfaz_adaptable import es_android
+                pequeno=es_android() and self.window().width()<900
+                caja = QVBoxLayout(fila) if pequeno else QHBoxLayout(fila)
+                acciones=QHBoxLayout() if pequeno else caja
+                if pequeno:item.setSizeHint(QSize(0,180))
                 texto = QLabel(f"{cliente['nombre']}\n{detalle}")
                 if cliente.get("frecuente"):
                     texto.setText("★ " + texto.text() + " · Cliente frecuente")
                 texto.setTextFormat(Qt.TextFormat.PlainText)
                 texto.setWordWrap(True)
                 caja.addWidget(texto, 1)
-                barra = QPushButton('Barra · Cuenta individual')
+                barra = QPushButton('Barra' if pequeno else 'Barra · Cuenta individual')
                 mesa = QPushButton('Añadir a mesa')
                 for boton in (barra, mesa):
                     boton.setMinimumHeight(54)
-                    caja.addWidget(boton)
+                    acciones.addWidget(boton)
                 barra.clicked.connect(lambda checked=False, i=cliente['id']: self.al_barra(i))
                 mesa.clicked.connect(lambda checked=False, i=cliente['id']: self.al_mesa(i))
                 if self.al_editar is not None:
                     editar=QPushButton('Editar')
                     editar.setMinimumHeight(54)
-                    caja.addWidget(editar)
+                    acciones.addWidget(editar)
                     editar.clicked.connect(lambda checked=False,i=cliente['id']:self.al_editar(i))
+                if pequeno:caja.addLayout(acciones)
                 self.lista.setItemWidget(item, fila)
         self.filtrar()
 

@@ -26,15 +26,16 @@ class DialogoIntegrado(QDialog):
         if not compacto:
             cubierta.setStyleSheet('QWidget#CubiertaFormulario { background: #101e1b; }')
         exterior = QVBoxLayout(cubierta)
-        exterior.setContentsMargins(24, 24, 24, 24)
+        from interfaz_adaptable import es_android, medidas_dialogo
+        margen = 8 if es_android() else 24
+        exterior.setContentsMargins(margen, margen, margen, margen)
         tarjeta = QWidget()
         tarjeta.setObjectName('TarjetaFormulario')
         tarjeta.setStyleSheet('QWidget#TarjetaFormulario { background: #101b2e; border: 1px solid #287b99; border-radius: 18px; }')
         interior = QVBoxLayout(tarjeta)
-        interior.setContentsMargins(22, 18, 22, 18)
+        interior.setContentsMargins(12, 10, 12, 10) if es_android() else interior.setContentsMargins(22, 18, 22, 18)
         if compacto:
-            tarjeta.setFixedSize(min(int(self.property('anchoCompacto') or 660), max(160, ventana.width() - 48)),
-                                 min(int(self.property('altoCompacto') or 620), max(180, ventana.height() - 48)))
+            tarjeta.setFixedSize(*medidas_dialogo(ventana,int(self.property('anchoCompacto') or 660),int(self.property('altoCompacto') or 620)))
             self._tarjeta_integrada = tarjeta
             sombra = QGraphicsDropShadowEffect(tarjeta)
             sombra.setBlurRadius(32)
@@ -106,8 +107,8 @@ class DialogoIntegrado(QDialog):
             if evento.type() == QEvent.Type.Resize:
                 self._cubierta_integrada.setGeometry(objeto.rect())
                 if self.property('compacto'):
-                    self._tarjeta_integrada.setFixedSize(min(int(self.property('anchoCompacto') or 660), max(160, objeto.width() - 48)),
-                                                        min(int(self.property('altoCompacto') or 620), max(180, objeto.height() - 48)))
+                    from interfaz_adaptable import medidas_dialogo
+                    self._tarjeta_integrada.setFixedSize(*medidas_dialogo(objeto,int(self.property('anchoCompacto') or 660),int(self.property('altoCompacto') or 620)))
             elif evento.type() == QEvent.Type.Close:
                 self.reject()
         return super().eventFilter(objeto, evento)

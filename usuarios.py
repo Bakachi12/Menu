@@ -371,6 +371,8 @@ class DialogoAcceso(FondoEspera):
         pie.setAlignment(Qt.AlignmentFlag.AlignCenter)
         pie.setStyleSheet('color: #71819B; font-size: 10px;')
         self.distribucion.addWidget(pie)
+        from interfaz_adaptable import hacer_acceso_desplazable
+        hacer_acceso_desplazable(self)
         self.reloj_timer = QTimer(self)
         self.reloj_timer.setInterval(1000)
         self.reloj_timer.timeout.connect(self.actualizar_reloj)

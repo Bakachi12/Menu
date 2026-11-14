@@ -1227,13 +1227,16 @@ class PaginaInventario(QWidget):
             "QFrame#FilaInventario { background: #0b1425; border: 1px solid #26344B; "
             "border-radius: 10px; }"
         )
-        fila_layout = QHBoxLayout(fila)
+        from interfaz_adaptable import es_android
+        estrecho=es_android() and self.window().width()<760
+        fila_layout = QVBoxLayout(fila) if estrecho else QHBoxLayout(fila)
         fila_layout.setContentsMargins(14, 8, 14, 8)
         etiqueta = QLabel(nombre)
         etiqueta.setWordWrap(True)
         fila_layout.addWidget(etiqueta, 1)
         if columna:
             indicador = QLabel(columna)
+            indicador.setWordWrap(True)
             indicador.setStyleSheet("color: #A8B8CE; font-size: 15px;")
             fila_layout.addWidget(indicador)
         fila_layout.addWidget(cantidad)

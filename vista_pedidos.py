@@ -292,7 +292,7 @@ class RejillaProductos(QWidget):
         layout.setSpacing(10)
 
     def distribuir(self):
-        columnas = max(1, min(6, (self.width() - 10) // 200))
+        columnas = max(1, min(2 if self.width()<600 else 6, (self.width() - 10) // (160 if self.width()<600 else 200)))
         if columnas != self.columnas:
             self.columnas = columnas
             for boton in self.botones:
