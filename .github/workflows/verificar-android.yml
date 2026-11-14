@@ -1,8 +1,6 @@
 name: Verificar navegación Android
 on:
   workflow_dispatch:
-  push:
-    paths: ['.github/workflows/verificar-android.yml']
 permissions:
   contents: read
   actions: read
@@ -37,7 +35,7 @@ jobs:
             sleep 25
             adb shell am force-stop pa.tisamar.menu
             adb shell run-as pa.tisamar.menu cat files/app/main.py > qa-main.py
-            python tools/android/qa_prepare_login.py
+            python AndroidCompleto/herramientas/qa_prepare_login.py
             adb push qa-main.py /data/local/tmp/qa-main.py
             adb shell run-as pa.tisamar.menu cp /data/local/tmp/qa-main.py files/app/main.py
             adb shell monkey -p pa.tisamar.menu 1

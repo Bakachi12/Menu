@@ -1,10 +1,6 @@
 name: Menu completo Android
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - '.github/workflows/menu-completo-android.yml'
-      - 'tools/android/**'
 permissions:
   contents: read
 concurrency:
@@ -42,11 +38,11 @@ jobs:
       - name: Android SDK y NDK
         run: sdkmanager 'platform-tools' 'platforms;android-35' 'build-tools;35.0.0' 'ndk;28.2.13676358'
       - name: Pruebas de la aplicación completa
-        run: QT_DEBUG_PLUGINS=1 QT_QPA_PLATFORM=xcb xvfb-run -a python -X faulthandler tools/android/run_tests.py
+        run: QT_DEBUG_PLUGINS=1 QT_QPA_PLATFORM=xcb xvfb-run -a python -X faulthandler AndroidCompleto/herramientas/run_tests.py
       - name: Compilar APK autónomo ${{ matrix.arch }}
         run: |
           set -o pipefail
-          python tools/android/build_menu_android.py --arch ${{ matrix.arch }} --destination "$RUNNER_TEMP/menu-android" --sdk "$ANDROID_HOME" --ndk "$ANDROID_HOME/ndk/28.2.13676358" 2>&1 | tee android-build.log
+          python AndroidCompleto/herramientas/build_menu_android.py --arch ${{ matrix.arch }} --destination "$RUNNER_TEMP/menu-android" --sdk "$ANDROID_HOME" --ndk "$ANDROID_HOME/ndk/28.2.13676358" 2>&1 | tee android-build.log
       - name: Guardar APK
         uses: actions/upload-artifact@v4
         with:
@@ -80,7 +76,7 @@ jobs:
             adb exec-out screencap -p > android-login.png
             adb shell am force-stop pa.tisamar.menu
             adb shell run-as pa.tisamar.menu cat files/app/main.py > qa-main.py
-            python tools/android/qa_prepare_login.py
+            python AndroidCompleto/herramientas/qa_prepare_login.py
             adb push qa-main.py /data/local/tmp/qa-main.py
             adb shell run-as pa.tisamar.menu cp /data/local/tmp/qa-main.py files/app/main.py
             adb shell monkey -p pa.tisamar.menu 1

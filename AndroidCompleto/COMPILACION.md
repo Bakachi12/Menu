@@ -4,7 +4,7 @@ Esta compilación ejecuta la aplicación Python/Qt completa en Android y guarda 
 
 ## Descargar e instalar
 
-En GitHub Actions abre **Menu completo Android** y descarga el artefacto **Tisamar-Menu-Android-ARM64** de una ejecución correcta. Extrae el ZIP e instala el APK en un dispositivo ARM64 con Android 9 o posterior. Android puede pedir permiso para instalar aplicaciones desde el navegador o explorador de archivos utilizado.
+En GitHub Actions abre **Menu completo Android** y descarga el artefacto **Tisamar-Menu-Android-aarch64** de una ejecución correcta. Extrae el ZIP e instala el APK en un dispositivo ARM64 con Android 9 o posterior. Android puede pedir permiso para instalar aplicaciones desde el navegador o explorador de archivos utilizado.
 
 El primer APK es una compilación **debug para pruebas**, no una publicación de Google Play. No se ha validado todavía en un dispositivo físico. La compilación inicial ocupa aproximadamente 167 MiB.
 
@@ -18,11 +18,11 @@ Archivo: `.github/workflows/menu-completo-android.yml`.
 - Qt for Python 6.12.0 y paquetes Android oficiales.
 - SDK 35, NDK 28.2 y arquitectura ARM64.
 - Pruebas de Python ejecutadas en X11 virtual antes de compilar.
-- Preparación aislada del código mediante `tools/android/build_menu_android.py`.
+- Preparación aislada del código mediante `AndroidCompleto/herramientas/build_menu_android.py`.
 - Los archivos de datos `.db`, SQLite y ejecutables de Windows no se empaquetan.
 - El APK y los registros de diagnóstico quedan como artefactos de GitHub Actions.
 
-Puede repetirse desde **Actions → Menu completo Android → Run workflow**. El proceso también se inicia al cambiar el workflow o `tools/android/`.
+Puede repetirse desde **Actions → Menu completo Android → Run workflow**. La compilación se inicia manualmente; editar PC o Android no genera un APK automáticamente.
 
 La firma debug de GitHub Actions es de prueba y puede cambiar entre ejecuciones. Antes de distribuir actualizaciones de uso diario se necesita configurar una clave de firma estable guardada como secreto, además de realizar las pruebas en Android.
 
