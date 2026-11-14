@@ -82,6 +82,15 @@ def main():
         config.set('app', key, value)
     with spec.open('w') as output:
         config.write(output)
+    # Buildozer 1.6 still looks in tools/bin, removed from current Android SDKs.
+    sdk = Path(args.sdk)
+    legacy = sdk / 'tools' / 'bin' / 'sdkmanager'
+    if not legacy.exists():
+        import shlex
+        real = sorted((sdk / 'cmdline-tools').glob('*/bin/sdkmanager'))[-1].resolve()
+        legacy.parent.mkdir(parents=True, exist_ok=True)
+        legacy.write_text('#!/bin/sh\nexec ' + shlex.quote(str(real)) + ' --sdk_root=' + shlex.quote(str(sdk)) + ' "$@"\n')
+        legacy.chmod(0o755)
     subprocess.run(['buildozer', '-v', 'android', 'debug'], cwd=target, check=True)
     apks = list(target.rglob('*.apk'))
     # Qt deploy's bin_dir can refer to the parent of the staged source.
