@@ -4,7 +4,7 @@ Sin dependencia de Qt: cada operación usa su propia conexión SQLite. Los hilos
 HTTP nunca escriben cuentas, ventas ni inventario.
 """
 from pedidos_cocina import PAGINA as PAGINA_COCINA
-from cocina import preparar_cocina, platos_cocina, cambiar_disponibilidad, validar_aumentos
+from cocina import preparar_cocina, platos_cocina, cambiar_disponibilidad, validar_aumentos, sincronizar_comandas, seccion_inicial, acompanamientos, opciones, COCINA
 from contextlib import contextmanager
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -75,10 +75,58 @@ class SolicitudesTable:
             return db.execute("SELECT id,nombre,tipo FROM terminales_table WHERE huella=?",
                               (hashlib.sha256(clave.encode()).hexdigest(),)).fetchone()
 
+    def catalogo(self, db):
+        columnas = {r[1] for r in db.execute('PRAGMA table_info(productos)')}
+        seccion = 'seccion' if 'seccion' in columnas else "'' AS seccion"
+        preparaciones = 'preparaciones' if 'preparaciones' in columnas else "'' AS preparaciones"
+        lleva = 'lleva_acompanamiento' if 'lleva_acompanamiento' in columnas else '1 AS lleva_acompanamiento'
+        cantidad = 'cantidad_acompanamientos' if 'cantidad_acompanamientos' in columnas else '1 AS cantidad_acompanamientos'
+        filas = db.execute(f"SELECT id,nombre,precio_centimos,categoria,{seccion},{preparaciones},{lleva},{cantidad} FROM productos WHERE activo=1 ORDER BY id")
+        agotados = {r[0] for r in db.execute('SELECT producto_id FROM platos_agotados')}
+        productos = []
+        for fila in filas:
+            p = dict(fila)
+            p['seccion'] = p['seccion'] or seccion_inicial(p['nombre'], p['categoria'])
+            from cocina import preparaciones_con_recargo
+            p['recargos_preparacion'] = preparaciones_con_recargo(p['preparaciones'] or '')
+            p['preparaciones'] = opciones(p['preparaciones'] or '')
+            if not p['preparaciones'] and 'hamburguesa' in p['nombre'].casefold():
+                p['preparaciones'] = ['Completa', 'Sin vegetales']
+            p['disponible'] = p['id'] not in agotados
+            productos.append(p)
+        return productos
+
+    def producto_solicitado(self, db, identificador, seleccion):
+        catalogo = self.catalogo(db)
+        p = next((p for p in catalogo if p['id'] == identificador), None)
+        if not p or not p['disponible']:
+            raise ValueError('Un producto ya no está disponible. Actualiza el menú.')
+        nuevo = dict(producto_id=identificador, nombre=p['nombre'], categoria=p['categoria'], precio=p['precio_centimos'] / 100)
+        if p['seccion'] == COCINA:
+            if not isinstance(seleccion, dict):
+                raise ValueError('Selecciona la preparación y el acompañamiento del plato.')
+            preparacion, lado, extra = (seleccion.get(k, '') for k in ('preparacion', 'acompanamiento', 'extra'))
+            from cocina import seleccion_preparaciones
+            elegidas = seleccion_preparaciones(preparacion, p['preparaciones'])
+            lados = seleccion_preparaciones(lado, acompanamientos(catalogo))
+            if (not isinstance(extra, str) or (p['preparaciones'] and not elegidas)
+                    or (not lados or len(lados) > p['cantidad_acompanamientos'] if p['lleva_acompanamiento'] else bool(lados or extra))
+                    or (extra and extra not in lados)):
+                raise ValueError('La preparación o el acompañamiento ya no están disponibles.')
+            recargos = dict(db.execute('SELECT nombre,centimos FROM recargos_acompanamiento'))
+            cargo = recargos.get(extra, 0) if extra else 0
+            lado = ' · '.join(lados)
+            if extra and cargo <= 0:
+                raise ValueError('La porción extra ya no está disponible.')
+            cargo += sum(p['recargos_preparacion'].get(v, 0) for v in elegidas)
+            preparacion = ' · '.join(elegidas)
+            nuevo.update(preparacion=preparacion, acompanamiento=lado, extra=extra, recargo_centimos=cargo)
+            nuevo['precio'] = (p['precio_centimos'] + cargo) / 100
+        return nuevo
+
     def resumen(self, incluir_catalogo=True):
         with self.conexion() as db:
-            productos = [dict(r) for r in db.execute('''SELECT id, nombre,
-                precio_centimos, categoria FROM productos WHERE activo = 1 ORDER BY id''')] if incluir_catalogo else []
+            productos = self.catalogo(db) if incluir_catalogo else []
             mesas = []
             for (nombre,) in db.execute('SELECT nombre FROM mesas_configuracion ORDER BY id'):
                 fila = db.execute('SELECT productos FROM pedidos_abiertos WHERE mesa = ?', (nombre,)).fetchone()
@@ -86,7 +134,8 @@ class SolicitudesTable:
                 clientes = [dict(c) for c in db.execute('SELECT id, nombre FROM clientes WHERE mesa = ?', (nombre,))]
                 mesas.append(dict(nombre=nombre, clientes=clientes, cuenta=cuenta,
                                   total_centimos=sum(round(p['precio'] * 100) for p in cuenta)))
-        return dict(productos=productos, mesas=mesas) if incluir_catalogo else dict(mesas=mesas)
+            recargos = dict(db.execute('SELECT nombre,centimos FROM recargos_acompanamiento')) if incluir_catalogo else {}
+        return dict(productos=productos, mesas=mesas, acompanamientos=acompanamientos(productos), recargos=recargos) if incluir_catalogo else dict(mesas=mesas)
 
     @staticmethod
     def validar_destino(db, mesa, cliente_id):
@@ -127,12 +176,12 @@ class SolicitudesTable:
                 cantidad = linea['cantidad']
                 if not 1 <= cantidad <= 99 or len(productos) + cantidad > 200:
                     raise ValueError('Máximo 99 unidades por línea y 200 por solicitud.')
-                fila = db.execute('SELECT nombre, categoria, precio_centimos FROM productos WHERE id = ? AND activo = 1',
-                                  (linea['producto_id'],)).fetchone()
-                if not fila:
-                    raise ValueError('Un producto ya no está disponible. Actualiza el menú.')
-                productos.extend([dict(producto_id=linea['producto_id'], nombre=fila[0],
-                                       categoria=fila[1], precio=fila[2] / 100)] * cantidad)
+                nuevo = self.producto_solicitado(db, linea['producto_id'], linea.get('seleccion'))
+                for _ in range(cantidad):
+                    unidad = dict(nuevo)
+                    if 'acompanamiento' in nuevo:
+                        unidad['unidad_cocina'] = uuid.uuid4().hex
+                    productos.append(unidad)
             db.execute('''INSERT INTO solicitudes_table
                 (id, dispositivo, mesa, cliente_id, productos, nota, fecha, emisor_id, emisor)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''', (identificador, dispositivo.strip(), mesa, cliente,
@@ -166,15 +215,16 @@ class SolicitudesTable:
                 nombre = db.execute('SELECT nombre FROM clientes WHERE id = ?', (cliente,)).fetchone() if cliente is not None else None
                 nuevos = json.loads(solicitud['productos'])
                 for p in nuevos:
-                    actual = db.execute('SELECT nombre, categoria, precio_centimos FROM productos WHERE id = ? AND activo = 1',
-                                        (p['producto_id'],)).fetchone()
-                    if not actual or tuple(actual) != (p['nombre'], p['categoria'], round(p['precio'] * 100)):
+                    actual = self.producto_solicitado(db, p['producto_id'], p if 'acompanamiento' in p else None)
+                    if any(p.get(k) != v for k, v in actual.items()):
                         raise ValueError('El catálogo cambió. Rechaza esta solicitud y pide enviarla de nuevo.')
                     p.pop('producto_id')
                     p.update(cliente_id=cliente, cliente_nombre=nombre[0] if nombre else '')
                 validar_aumentos(db, [], nuevos)
                 fila = db.execute('SELECT productos FROM pedidos_abiertos WHERE mesa = ?', (mesa,)).fetchone()
-                cuenta = (json.loads(fila[0]) if fila else []) + nuevos
+                anteriores = json.loads(fila[0]) if fila else []
+                cuenta = anteriores + nuevos
+                sincronizar_comandas(db, mesa, anteriores, cuenta)
                 db.execute('''INSERT INTO pedidos_abiertos(mesa, productos) VALUES (?, ?)
                     ON CONFLICT(mesa) DO UPDATE SET productos = excluded.productos''', (mesa, json.dumps(cuenta, ensure_ascii=False)))
             db.execute('''UPDATE solicitudes_table SET estado = ?, responsable_id = ?, resuelta = ? WHERE id = ?''',
@@ -193,10 +243,16 @@ class ServidorTable:
             return self.http.server_port
         servicio = self.solicitudes
         pagina = Path(__file__).with_name('pedidos_table.html').read_bytes()
+        fondo = Path(__file__).with_name('fondo_bar.png').read_bytes()
 
         sesiones = {}
         bloqueo = Lock()
         identificar = self.identificar
+        perfil = getattr(getattr(identificar, '__self__', None), 'perfil', None)
+
+        def permite_terminal(cuenta, tipo):
+            rol = cuenta.get('rol', 'admin') if cuenta else None
+            return rol in (('admin','cocinero') if tipo == 'cocina' else ('admin','mesas','mesero'))
 
         class Handler(BaseHTTPRequestHandler):
             def setup(self):
@@ -225,6 +281,11 @@ class ServidorTable:
                     if caduca <= monotonic():
                         sesiones.pop(token, None)
                         return False
+                    if perfil:
+                        cuenta = perfil(cuenta['id'])
+                    if not permite_terminal(cuenta, tipo):
+                        sesiones.pop(token, None)
+                        return False
                     self.empleado = cuenta
                 return self.enlace_valido(tipo) and self.terminal[0] == terminal_id
 
@@ -235,6 +296,8 @@ class ServidorTable:
 
             def do_GET(self):
                 ruta = urlsplit(self.path).path
+                if ruta == '/fondo_bar.png':
+                    return self.responder(200, fondo, 'image/png')
                 if ruta == '/cocina':
                     return self.responder(200, PAGINA_COCINA, 'text/html; charset=utf-8')
                 if ruta in ('/api/cocina', '/api/cocina/listas', '/api/cocina/disponibilidad'):
@@ -261,10 +324,14 @@ class ServidorTable:
                         return self.responder(200, ordenes)
                     except sqlite3.Error:
                         return self.responder(503, dict(error='Cola no disponible.'))
+                if ruta == '/api/vinculo':
+                    if not self.enlace_valido():
+                        return self.responder(401, dict(error='El vínculo no es válido o fue retirado. Genera un nuevo enlace de PedidosTable en la caja.', vinculo_invalido=True))
+                    return self.responder(200, dict(vinculado=True))
                 if ruta == '/':
                     return self.responder(200, pagina, 'text/html; charset=utf-8')
                 if not self.autorizado():
-                    return self.responder(401, dict(error='Clave incorrecta o conexión reiniciada.'))
+                    return self.responder(401, dict(error='Inicia sesión de nuevo o revisa el vínculo con la caja.', vinculo_invalido=not self.enlace_valido()))
                 try:
                     if ruta == '/api/cuentas':
                         return self.responder(200, servicio.resumen(False))
@@ -320,7 +387,9 @@ class ServidorTable:
                         return self.responder(503, dict(error='No se pudo actualizar la orden.'))
                 tipo = 'cocina' if self.path in ('/api/cocina/login', '/api/cocina/logout') else 'mesas'
                 login = self.path in ('/api/login', '/api/cocina/login')
-                if not (self.enlace_valido(tipo) if login else self.autorizado(tipo)):
+                if not self.enlace_valido(tipo):
+                    return self.responder(401, dict(error='Vínculo incorrecto o retirado. Vuelve a vincular con la caja.', vinculo_invalido=True))
+                if not login and not self.autorizado(tipo):
                     return self.responder(401, dict(error='Inicia sesión con tu cuenta.'))
                 if self.path in ('/api/logout', '/api/cocina/logout'):
                     with bloqueo:
@@ -344,6 +413,8 @@ class ServidorTable:
                         empleado = identificar(usuario, password)
                         if not empleado:
                             return self.responder(401, dict(error='Usuario o contraseña incorrectos.'))
+                        if not permite_terminal(empleado, tipo):
+                            return self.responder(403, dict(error='Tu rol no tiene permiso para esta terminal.'))
                         token = secrets.token_urlsafe(32)
                         with bloqueo:
                             sesiones[token] = empleado, monotonic() + 8 * 3600, self.terminal[0]

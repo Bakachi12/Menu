@@ -188,7 +188,7 @@ class GestionTurnos:
         self.sesion.exigir_admin()
         with self.sesion.conexion() as db:
             return db.execute(
-                "SELECT id, nombre FROM usuarios WHERE rol = 'mesas' AND tipo = 'normal' ORDER BY nombre"
+                "SELECT id, nombre FROM usuarios WHERE rol = 'mesas' AND tipo = 'normal' AND eliminado=0 ORDER BY nombre"
             ).fetchall()
 
     def empleados_para_asignacion_tras_cierre(self, turno_cerrado_id):
@@ -210,7 +210,7 @@ class GestionTurnos:
                     "La asignación manual solo está disponible después del cierre autorizado."
                 )
             return db.execute(
-                "SELECT id, nombre FROM usuarios WHERE rol = 'mesas' AND tipo = 'normal' ORDER BY nombre"
+                "SELECT id, nombre FROM usuarios WHERE rol = 'mesas' AND tipo = 'normal' AND eliminado=0 ORDER BY nombre"
             ).fetchall()
 
     def horarios_programados(self):
@@ -233,7 +233,7 @@ class GestionTurnos:
             raise ValueError("Escribe una hora válida en formato HH:MM.") from error
         with self.sesion.conexion() as db:
             existe = db.execute(
-                "SELECT 1 FROM usuarios WHERE id = ? AND rol = 'mesas' AND tipo = 'normal'",
+                "SELECT 1 FROM usuarios WHERE id = ? AND rol = 'mesas' AND tipo = 'normal' AND eliminado=0",
                 (usuario_id,),
             ).fetchone()
             if not existe:
@@ -290,6 +290,9 @@ class GestionTurnos:
             """).fetchall()
 
     def hoja_inventarios(self):
+        from hojas_venta_libre import reporte
+        if self.sesion.es_venta_libre():
+            return reporte(self.sesion)
         self.sesion.exigir_admin()
         with self.sesion.conexion() as db:
             turnos = db.execute("""
@@ -373,7 +376,8 @@ class GestionTurnos:
                     if cierre_fecha else None
                 ),
             })
-        return reporte
+        from hojas_venta_libre import reporte as reporte_libre
+        return reporte + reporte_libre(self.sesion)
 
     def registrar_entrada(self, producto_id, cantidad):
         self.sesion.exigir_admin()
@@ -482,6 +486,8 @@ class GestionTurnos:
                 producto_id, producto[0], producto[1], cantidad,
                 administrador_id, "Entrada de inventario autorizada en Venta libre",
             ))
+            from hojas_venta_libre import entrada
+            entrada(db,self.sesion.usuario,producto_id,cantidad,producto[0],producto[1])
 
     def turno_abierto(self):
         with self.sesion.conexion() as db:
@@ -509,6 +515,10 @@ class GestionTurnos:
         return turno if turno and turno["usuario_id"] == usuario_id else None
 
     def permite_operar(self):
+        if self.sesion.usuario and self.sesion.usuario.get('rol') == 'mesero':
+            return True
+        if self.sesion.usuario and self.sesion.usuario.get('rol') == 'cocinero':
+            return False
         if self.sesion.es_admin():
             return True
         if self.sesion.es_venta_libre():
@@ -523,6 +533,8 @@ class GestionTurnos:
         self.exigir_acceso_venta()
 
     def exigir_acceso_venta(self):
+        if self.sesion.usuario and self.sesion.usuario.get('rol') in ('mesero','cocinero'):
+            raise PermissionError('Este rol no tiene permiso para cobrar ni administrar inventario.')
         if not self.sesion.usuario:
             raise PermissionError("Inicia sesión para continuar.")
         if self.sesion.es_venta_libre():
@@ -586,6 +598,8 @@ class GestionTurnos:
                               'verificacion_venta_libre' if diferencia > 0 else 'faltante_venta_libre',
                               abs(diferencia), self.sesion.usuario['id'],
                               'Ajuste según conteo de apertura de Venta libre'))
+            from hojas_venta_libre import abrir
+            abrir(db,self.sesion.usuario,cantidades,actuales)
         self.sesion.inventario_libre_verificado = True
 
     @staticmethod
@@ -612,7 +626,7 @@ class GestionTurnos:
         horario_id=None, fecha_programada=None, responsable_id=None,
     ):
         usuario = db.execute(
-            "SELECT nombre FROM usuarios WHERE id = ? AND rol = 'mesas' AND tipo = 'normal'",
+            "SELECT nombre FROM usuarios WHERE id = ? AND rol = 'mesas' AND tipo = 'normal' AND eliminado=0",
             (usuario_id,),
         ).fetchone()
         if usuario is None:
@@ -982,6 +996,13 @@ class GestionTurnos:
                     (apertura if apertura is not None else asignada) + agregada - vendida
                 )
                 diferencia = cantidad_final - cantidad_esperada
+                if diferencia > 0:
+                    tipo_diferencia = "sobran"
+                    raise ValueError(
+                        f"No se puede cerrar el turno: {nombre}. "
+                        f"Se esperan {cantidad_esperada} unidades y contaste {cantidad_final}; "
+                        f"{tipo_diferencia} {abs(diferencia)}. Revisa el conteo, las entradas y las ventas antes de cerrar."
+                    )
                 db.execute("""
                     UPDATE turno_inventario SET cantidad_vendida = ?
                     WHERE turno_id = ? AND producto_id = ?
@@ -1028,60 +1049,61 @@ class GestionTurnos:
 
 
 class PaginaInventario(QWidget):
-    def __init__(self, sesion, gestion, parent=None):
+    def __init__(self, sesion, gestion, parent=None, mostrar_cierre=False):
         super().__init__(parent)
+        self.mostrar_cierre = mostrar_cierre
         self.sesion = sesion
         self.gestion = gestion
         self.al_cierre_turno = None
         self.setObjectName("PaginaInventario")
         self.setStyleSheet("""
-            QWidget#PaginaInventario { background: #101c1b; color: #F4F2ED; }
+            QWidget#PaginaInventario { background: #0b1425; color: #eaf3ff; }
             QLabel { color: #DCE4F0; background: transparent; font-size: 17px; }
-            QLabel#TituloInventario { color: #F2C66D; font-size: 29px; font-weight: 600; }
+            QLabel#TituloInventario { color: #79eaff; font-size: 29px; font-weight: 600; }
             QLabel#SubtituloInventario { color: #A8B8CE; font-size: 16px; }
             QLabel#EstadoInventario {
-                background: #1c302c; border: 1px solid #40594f; border-radius: 12px;
-                color: #F2C66D; padding: 14px 18px; font-size: 17px;
+                background: #1c302c; border: 1px solid #20354f; border-radius: 12px;
+                color: #79eaff; padding: 14px 18px; font-size: 17px;
             }
             QWidget#TarjetaInventario {
-                background: #1a2e2b; border: 1px solid #3c554d; border-radius: 16px;
+                background: #111f35; border: 1px solid #26677d; border-radius: 16px;
             }
             QWidget#PaginaInventario QComboBox, QWidget#PaginaInventario QLineEdit {
-                background: #10221e; color: #F4F2ED; border: 1px solid #516b60;
+                background: #101e34; color: #eaf3ff; border: 1px solid #287b99;
                 border-radius: 10px; padding: 10px 14px; font-size: 19px; min-height: 36px;
             }
             QWidget#PaginaInventario QComboBox QAbstractItemView {
-                background: #1a2e2b; color: #F4F2ED; border: 1px solid #516b60;
-                selection-background-color: #E9BA54; selection-color: #111827;
+                background: #111f35; color: #eaf3ff; border: 1px solid #287b99;
+                selection-background-color: #20d9f5; selection-color: #111827;
                 outline: 0;
             }
             QWidget#PaginaInventario QComboBox QAbstractItemView::item {
                 min-height: 48px; padding: 8px 12px;
             }
             QWidget#PaginaInventario QLineEdit#CantidadInventario {
-                background: #10221e; color: #FFFFFF; border: 2px solid #516b60;
+                background: #101e34; color: #FFFFFF; border: 2px solid #287b99;
                 border-radius: 10px; padding: 8px; font-size: 23px; font-weight: 600;
                 min-width: 132px; min-height: 52px;
             }
-            QWidget#PaginaInventario QLineEdit#CantidadInventario:focus { border-color: #D6A74C; }
+            QWidget#PaginaInventario QLineEdit#CantidadInventario:focus { border-color: #f34bcb; }
             QWidget#PaginaInventario QPushButton {
-                background: #29453e; color: #F4F2ED; border: 1px solid #516b60;
+                background: #112e45; color: #eaf3ff; border: 1px solid #287b99;
                 border-radius: 12px; font-size: 18px; font-weight: 600;
                 padding: 12px 18px; min-height: 52px;
             }
-            QWidget#PaginaInventario QPushButton:hover { border-color: #D6A74C; color: #F2C66D; }
-            QWidget#PaginaInventario QPushButton:pressed { background: #36564b; }
+            QWidget#PaginaInventario QPushButton:hover { border-color: #f34bcb; color: #79eaff; }
+            QWidget#PaginaInventario QPushButton:pressed { background: #1a4260; }
             QWidget#PaginaInventario QPushButton#AccionPrincipal {
-                background: #E9BA54; color: #111827; border-color: #E9BA54;
+                background: #20d9f5; color: #111827; border-color: #20d9f5;
             }
             QWidget#PaginaInventario QPushButton#AccionPeligro {
                 background: #71343C; color: white; border-color: #A65660;
             }
             QWidget#PaginaInventario QPushButton:disabled {
-                background: #263248; color: #8492A8; border-color: #3c554d;
+                background: #263248; color: #8492A8; border-color: #26677d;
             }
             QScrollArea { border: none; background: transparent; }
-            QFrame#SeparadorInventario { background: #3c554d; max-height: 1px; }
+            QFrame#SeparadorInventario { background: #26677d; max-height: 1px; }
         """)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 20, 24, 20)
@@ -1130,7 +1152,7 @@ class PaginaInventario(QWidget):
         layout.setContentsMargins(20, 18, 20, 20)
         layout.setSpacing(12)
         encabezado = QLabel(titulo)
-        encabezado.setStyleSheet("color: #F2C66D; font-size: 22px; font-weight: 600;")
+        encabezado.setStyleSheet("color: #79eaff; font-size: 22px; font-weight: 600;")
         layout.addWidget(encabezado)
         if descripcion:
             ayuda = QLabel(descripcion)
@@ -1148,11 +1170,11 @@ class PaginaInventario(QWidget):
             boton.setObjectName(object_name)
         if object_name == "AccionPrincipal":
             boton.setStyleSheet("""
-                QPushButton { background: #E9BA54; color: #111827; border: 2px solid #E9BA54;
+                QPushButton { background: #20d9f5; color: #111827; border: 2px solid #20d9f5;
                     border-radius: 12px; padding: 14px 20px; font-size: 19px; font-weight: bold; }
-                QPushButton:hover { background: #F2C66D; border-color: #F2C66D; }
-                QPushButton:pressed { background: #D6A74C; }
-                QPushButton:disabled { background: #40594f; color: #A8B4C8; border-color: #40594f; }
+                QPushButton:hover { background: #79eaff; border-color: #79eaff; }
+                QPushButton:pressed { background: #f34bcb; }
+                QPushButton:disabled { background: #20354f; color: #A8B4C8; border-color: #20354f; }
             """)
         elif object_name == "AccionPeligro":
             boton.setStyleSheet("""
@@ -1167,7 +1189,7 @@ class PaginaInventario(QWidget):
         self.mensaje.setText(texto)
         self.mensaje.setStyleSheet(
             "color: #FFAEAE; font-size: 16px;" if error
-            else "color: #8ED6A0; font-size: 16px;"
+            else "color: #54e3b7; font-size: 16px;"
         )
 
     def _limpiar_contenido(self):
@@ -1175,6 +1197,7 @@ class PaginaInventario(QWidget):
             elemento = self.contenido_layout.takeAt(0)
             widget = elemento.widget()
             if widget is not None:
+                widget.hide()
                 widget.deleteLater()
 
     def _campo_cantidad(self, valor=0):
@@ -1201,7 +1224,7 @@ class PaginaInventario(QWidget):
         fila = QFrame()
         fila.setObjectName("FilaInventario")
         fila.setStyleSheet(
-            "QFrame#FilaInventario { background: #132320; border: 1px solid #26344B; "
+            "QFrame#FilaInventario { background: #0b1425; border: 1px solid #26344B; "
             "border-radius: 10px; }"
         )
         fila_layout = QHBoxLayout(fila)
@@ -1288,7 +1311,10 @@ class PaginaInventario(QWidget):
             turno and turno["estado"] == "activo"
             and (propio or (admin and self.modo_admin == "general"))
         ):
-            self._construir_cierre(turno)
+            if getattr(self, 'mostrar_cierre', False):
+                self._construir_cierre(turno)
+            else:
+                self._construir_disponible_turno(turno)
         elif turno is None and self._resumen_cierre and (
             not admin or self.modo_admin in {"general", "asignar"}
         ):
@@ -1365,7 +1391,7 @@ class PaginaInventario(QWidget):
         fila = QFrame()
         fila.setObjectName("FilaExistencia")
         fila.setStyleSheet(
-            "QFrame#FilaExistencia { background: #132320; border: 1px solid #26344B; "
+            "QFrame#FilaExistencia { background: #0b1425; border: 1px solid #26344B; "
             "border-radius: 10px; }"
         )
         fila_layout = QHBoxLayout(fila)
@@ -1374,7 +1400,7 @@ class PaginaInventario(QWidget):
         etiqueta.setWordWrap(True)
         fila_layout.addWidget(etiqueta, 1)
         unidades = QLabel(f"{cantidad} unidades")
-        unidades.setStyleSheet("color: #F2C66D; font-size: 18px; font-weight: bold;")
+        unidades.setStyleSheet("color: #79eaff; font-size: 18px; font-weight: bold;")
         fila_layout.addWidget(unidades)
         layout.addWidget(fila)
 
@@ -1504,6 +1530,24 @@ class PaginaInventario(QWidget):
         layout.addWidget(self.btn_confirmar_apertura)
         self.contenido_layout.addWidget(tarjeta)
 
+    def _construir_disponible_turno(self, turno):
+        tarjeta, layout = self._tarjeta(
+            "Inventario disponible del turno",
+            "Unidades disponibles para vender: inventario inicial + entradas − ventas. Para cerrar o cambiar turno, usa el botón de Inicio.",
+        )
+        filas = self.gestion.resumen(turno['id'])
+        for producto in filas:
+            disponible = QLabel(str(producto['esperada']))
+            disponible.setStyleSheet('color: #ff69d5; font-size: 26px; font-weight: bold; padding: 8px;')
+            self._agregar_fila_producto(
+                layout, producto['nombre'], disponible,
+                f"Vendidas: {producto['vendida']} · Agregadas: {producto['agregada']}",
+            )
+        if not filas:
+            layout.addWidget(QLabel("Este turno no tiene productos asignados."))
+        layout.addWidget(self._boton("Actualizar existencias", self.actualizar))
+        self.contenido_layout.addWidget(tarjeta)
+
     def _construir_cierre(self, turno):
         tarjeta, layout = self._tarjeta(
             "Cierre de turno",
@@ -1542,7 +1586,7 @@ class PaginaInventario(QWidget):
             etiqueta = QLabel(texto)
             etiqueta.setWordWrap(True)
             etiqueta.setStyleSheet(
-                "background: #132320; border: 1px solid #26344B; border-radius: 10px; "
+                "background: #0b1425; border: 1px solid #26344B; border-radius: 10px; "
                 "padding: 14px; font-size: 16px;"
             )
             layout.addWidget(etiqueta)
@@ -1703,7 +1747,7 @@ class PaginaInventario(QWidget):
             self._mostrar_mensaje(f"No se pudo preparar el resumen: {error}", error=True)
             return
         titulo = QLabel("Ventas del turno e inventario final")
-        titulo.setStyleSheet("color: #F2C66D; font-size: 20px; font-weight: 600;")
+        titulo.setStyleSheet("color: #79eaff; font-size: 20px; font-weight: 600;")
         self.panel_conteo_layout.addWidget(titulo)
         for producto in self.resumen_actual:
             cantidad = self._campo_cantidad("")
@@ -1789,24 +1833,24 @@ class PaginaHojaInventarios(QWidget):
         self.gestion = gestion
         self.setObjectName("PaginaHojaInventarios")
         self.setStyleSheet("""
-            QWidget#PaginaHojaInventarios { background: #101c1b; color: #F4F2ED; }
+            QWidget#PaginaHojaInventarios { background: #0b1425; color: #eaf3ff; }
             QLabel { color: #DCE4F0; background: transparent; font-size: 17px; }
             QLabel#TituloHojaInventarios {
-                color: #F2C66D; font-size: 29px; font-weight: 600;
+                color: #79eaff; font-size: 29px; font-weight: 600;
             }
             QLabel#EstadoHojaInventarios { color: #FFAEAE; font-size: 16px; }
             QFrame#TarjetaTurnoHoja {
-                background: #1a2e2b; border: 1px solid #29384E; border-radius: 16px;
+                background: #111f35; border: 1px solid #173653; border-radius: 16px;
             }
             QFrame#TarjetaTurnoHoja:hover {
-                background: #1B293F; border: 1px solid #D6AE62;
+                background: #1B293F; border: 1px solid #20d9f5;
             }
             QPushButton#TurnoHoja {
-                background: transparent; color: #F4F2ED; border: none;
+                background: transparent; color: #eaf3ff; border: none;
                 text-align: left; padding: 18px; font-size: 17px;
             }
-            QPushButton#TurnoHoja:pressed { color: #F2C66D; padding-top: 20px; }
-            QLabel#EstadoTurnoHoja { color: #F2C66D; font-size: 14px; font-weight: bold; }
+            QPushButton#TurnoHoja:pressed { color: #79eaff; padding-top: 20px; }
+            QLabel#EstadoTurnoHoja { color: #79eaff; font-size: 14px; font-weight: bold; }
         """)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 20, 24, 20)
@@ -1825,7 +1869,7 @@ class PaginaHojaInventarios(QWidget):
         layout.addWidget(self.estado)
 
         self.contenedor_tarjetas = QWidget()
-        self.contenedor_tarjetas.setStyleSheet("background-color: #101c1b; border: none;")
+        self.contenedor_tarjetas.setStyleSheet("background-color: #0b1425; border: none;")
         self.lista_tarjetas = QVBoxLayout(self.contenedor_tarjetas)
         self.lista_tarjetas.setContentsMargins(2, 4, 8, 4)
         self.lista_tarjetas.setSpacing(12)
@@ -1833,8 +1877,8 @@ class PaginaHojaInventarios(QWidget):
         self.scroll.setWidgetResizable(True)
         self.scroll.setFrameShape(QFrame.Shape.NoFrame)
         self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.scroll.setStyleSheet("QScrollArea { background-color: #101c1b; border: none; }")
-        self.scroll.viewport().setStyleSheet("background-color: #101c1b; border: none;")
+        self.scroll.setStyleSheet("QScrollArea { background-color: #0b1425; border: none; }")
+        self.scroll.viewport().setStyleSheet("background-color: #0b1425; border: none;")
         self.scroll.setWidget(self.contenedor_tarjetas)
         layout.addWidget(self.scroll, 1)
         self.detalle = None
@@ -1919,15 +1963,15 @@ class _DetalleHojaInventario(QWidget):
             QWidget#DetalleHojaInventario { background: rgba(3, 8, 17, 225); }
             QFrame#TarjetaDetalleHoja { background: #111D2F; border: 1px solid #465064; border-radius: 20px; }
             QLabel { color: #DCE4F0; background: transparent; }
-            QLabel#TituloDetalleHoja { color: #F2C66D; font-size: 25px; font-weight: bold; }
+            QLabel#TituloDetalleHoja { color: #79eaff; font-size: 25px; font-weight: bold; }
             QTableWidget { background: #0B1525; alternate-background-color: #152136;
-                color: #F4F2ED; gridline-color: #29384E; border: 1px solid #29384E;
+                color: #eaf3ff; gridline-color: #173653; border: 1px solid #173653;
                 border-radius: 10px; font-size: 15px; }
-            QHeaderView::section { background: #29453e; color: #F2C66D;
+            QHeaderView::section { background: #112e45; color: #79eaff;
                 border: none; padding: 10px; font-weight: bold; }
-            QPushButton { background: #D6AE62; color: #132320; border: none;
+            QPushButton { background: #20d9f5; color: #0b1425; border: none;
                 border-radius: 9px; padding: 14px 24px; font-size: 16px; font-weight: bold; }
-            QPushButton:hover { background: #F2C66D; }
+            QPushButton:hover { background: #79eaff; }
         """)
         exterior = QVBoxLayout(self)
         exterior.setContentsMargins(24, 20, 24, 20)
@@ -1951,13 +1995,13 @@ class _DetalleHojaInventario(QWidget):
         titulos.addWidget(subtitulo)
         encabezado.addLayout(titulos, 1)
         estado = QLabel(turno["estado"].capitalize())
-        estado.setStyleSheet("color: #F2C66D; font-size: 15px; font-weight: bold;")
+        estado.setStyleSheet("color: #79eaff; font-size: 15px; font-weight: bold;")
         encabezado.addWidget(estado)
         interior.addLayout(encabezado)
         tabla = QTableWidget(len(filas), 8)
         tabla.setHorizontalHeaderLabels([
             "Producto", "Recibido", "Agregado", "Vendido", "Importe B/.",
-            "Entregado", "Faltantes", "Sobrantes",
+            "Saldo sistema" if filas and filas[0]["turno_id"] < 0 else "Entregado", "Faltantes", "Sobrantes",
         ])
         tabla.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         tabla.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
@@ -1973,9 +2017,9 @@ class _DetalleHojaInventario(QWidget):
             valores = [
                 fila["producto"], str(fila["recibida"]), str(fila["agregada"]),
                 str(fila["vendida"]), f'B/. {fila["dinero_centimos"] / 100:.2f}',
-                str(fila["entregada"]) if fila["cierre_fecha"] else "Pendiente",
-                str(fila["faltante"]) if fila["faltante"] is not None else "Pendiente",
-                str(fila["sobrante"]) if fila["sobrante"] is not None else "Pendiente",
+                str(fila["entregada"]) if fila["cierre_fecha"] or fila["turno_id"] < 0 else "Pendiente",
+                str(fila["faltante"]) if fila["faltante"] is not None else ("No contado" if fila["turno_id"] < 0 else "Pendiente"),
+                str(fila["sobrante"]) if fila["sobrante"] is not None else ("No contado" if fila["turno_id"] < 0 else "Pendiente"),
             ]
             for j, valor in enumerate(valores):
                 celda = QTableWidgetItem(valor)
@@ -2045,24 +2089,24 @@ class PaginaHorarioTurnos(QWidget):
         self.gestion = gestion
         self.setObjectName("PaginaHorarioTurnos")
         self.setStyleSheet("""
-            QWidget#PaginaHorarioTurnos { background: #101c1b; color: #F4F2ED; }
+            QWidget#PaginaHorarioTurnos { background: #0b1425; color: #eaf3ff; }
             QLabel { color: #DCE4F0; background: transparent; font-size: 17px; }
             QLabel#TituloHorarioTurnos {
-                color: #F2C66D; font-size: 29px; font-weight: 600;
+                color: #79eaff; font-size: 29px; font-weight: 600;
             }
-            QLabel#EstadoHorarioTurnos { color: #8ED6A0; font-size: 16px; }
+            QLabel#EstadoHorarioTurnos { color: #54e3b7; font-size: 16px; }
             QWidget#PaginaHorarioTurnos QComboBox,
             QWidget#PaginaHorarioTurnos QTimeEdit {
-                background: #10221e; color: #F4F2ED; border: 1px solid #516b60;
+                background: #101e34; color: #eaf3ff; border: 1px solid #287b99;
                 border-radius: 10px; padding: 10px 14px; font-size: 19px;
                 min-height: 48px;
             }
             QWidget#PaginaHorarioTurnos QComboBox QAbstractItemView {
-                background: #1a2e2b; color: #F4F2ED; selection-background-color: #E9BA54;
+                background: #111f35; color: #eaf3ff; selection-background-color: #20d9f5;
                 selection-color: #111827;
             }
             QWidget#PaginaHorarioTurnos QPushButton {
-                background: #E9BA54; color: #111827; border: 2px solid #E9BA54;
+                background: #20d9f5; color: #111827; border: 2px solid #20d9f5;
                 border-radius: 12px; padding: 14px 20px; font-size: 19px;
                 font-weight: bold; min-height: 54px;
             }
@@ -2070,12 +2114,12 @@ class PaginaHorarioTurnos(QWidget):
                 background: #71343C; color: white; border-color: #A65660;
             }
             QTreeWidget {
-                background: #132320; alternate-background-color: #182337;
-                color: #F4F2ED; gridline-color: #516b60;
-                border: 1px solid #516b60; border-radius: 8px; font-size: 16px;
+                background: #0b1425; alternate-background-color: #182337;
+                color: #eaf3ff; gridline-color: #287b99;
+                border: 1px solid #287b99; border-radius: 8px; font-size: 16px;
             }
             QHeaderView::section {
-                background: #29453e; color: #F2C66D; border: 1px solid #516b60;
+                background: #112e45; color: #79eaff; border: 1px solid #287b99;
                 padding: 10px; font-size: 15px; font-weight: bold;
             }
         """)

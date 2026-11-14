@@ -2,7 +2,7 @@
 <html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PedidosCocina</title>
 <style>
-:root{color-scheme:dark;font:17px Roboto,"Segoe UI",system-ui,sans-serif;color:#f6f3e8;background:#101e19;--gold:#f2cd84;--line:#395448}
+:root{color-scheme:dark;font:17px Roboto,"Segoe UI",system-ui,sans-serif;color:#eaf3ff;background:#101e19;--gold:#79eaff;--line:#395448}
 *{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(ellipse at top left,#253e30,transparent 50rem)}
 main{max-width:1200px;margin:auto;padding:clamp(14px,3vw,32px)}
 header{display:flex;align-items:center;justify-content:space-between;gap:8px 18px;flex-wrap:wrap;border-bottom:1px solid var(--line);padding-bottom:16px}
@@ -22,6 +22,23 @@ form{max-width:460px;margin:24px auto}form h2{margin-top:0}label,input{display:b
 input{background:#102119;border:1px solid #56725f;color:inherit;padding:12px}
 form button{width:100%;margin-top:12px}#volver,#mas{margin:14px 8px 0 0}[hidden]{display:none!important}
 @media(max-width:600px){nav{display:grid;grid-template-columns:1fr 1fr}nav strong{align-self:center}nav #salir{grid-row:1;grid-column:2}nav button{padding-inline:8px}}
+
+/* Identidad Tisamar: azul noche, cian y fucsia. */
+:root{--gold:#28d9f5;--line:#285775;--edge:#285775;--panel:#101e34;--muted:#abc1da;background:#091323;color:#eaf3ff;font-size:18px}
+body{background:radial-gradient(ellipse at top left,#153554,transparent 65%),radial-gradient(ellipse at bottom right,#301633,transparent 65%),#091323;min-height:100vh}
+header{border-bottom:1px solid #27728d}h1{color:#7ceaff}h2{color:#eaf3ff}
+section,aside,article,form{background:#101e34;border-color:#285775;box-shadow:0 8px 24px #0003}
+button{min-height:56px;border:1px solid #28d9f5;border-radius:12px;background:#28d9f5;color:#061726;font-size:18px;font-weight:650;transition:background .15s,border-color .15s}
+button:hover{filter:brightness(1.08);box-shadow:0 0 14px #28d9f526}button:disabled{opacity:.45;box-shadow:none}
+button.secundario{background:#142c46;color:#9befff;border-color:#287b99}
+button.selected,button[aria-pressed=true]{background:#382044;color:#ffd0f2;border-color:#fa4cc7}
+input,select,textarea{background:#0b172b;color:#eaf3ff;border:1px solid #287b99;border-radius:10px;font:inherit;min-height:52px;padding:12px}
+input:focus,select:focus,textarea:focus{border-color:#28d9f5;outline:2px solid #28d9f530}
+:focus-visible{outline:3px solid #fa4cc7;outline-offset:3px}
+label{color:#b9cde3}#message{background:#172f49;color:#eaf3ff}article{border-top:3px solid #fa4cc7}article small{color:#a9c3de}
+
+article{padding:22px;border-radius:18px}article h2{font-size:27px}article p{font-size:19px;line-height:1.55}article button{margin-top:18px;min-height:60px}#cola{gap:18px}
+
 </style></head><body><main>
 <header><h1>PedidosCocina</h1><span id="estado" role="status"></span></header>
 <form id="vincular"><h2>Vincular tablet</h2>

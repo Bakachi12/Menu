@@ -41,28 +41,28 @@ class PantallaEspera(FondoEspera):
         self.setObjectName("PantallaEspera")
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setStyleSheet("QLabel { background: transparent; border: none; color: #F4F2ED; }")
+        self.setStyleSheet("QLabel { background: transparent; border: none; color: #eaf3ff; }")
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)
         layout.setSpacing(16)
-        self.marca = self.etiqueta("R E S T A U R A N T E   &   B A R", 14, "#E4BD76")
+        self.marca = self.etiqueta("R E S T A U R A N T E   &   B A R", 14, "#79eaff")
         layout.addWidget(self.marca)
         layout.addStretch(2)
         layout.addWidget(self.etiqueta("U N A   P A U S A", 12, "#A8B4C8"))
-        self.reloj = self.etiqueta("", 84, "#F4F2ED")
+        self.reloj = self.etiqueta("", 84, "#eaf3ff")
         layout.addWidget(self.reloj)
         self.fecha = self.etiqueta("", 16, "#A8B4C8")
         layout.addWidget(self.fecha)
         layout.addSpacing(18)
         separador = QWidget(self)
         separador.setFixedSize(100, 1)
-        separador.setStyleSheet("background-color: #E4BD76;")
+        separador.setStyleSheet("background-color: #79eaff;")
         layout.addWidget(separador, 0, Qt.AlignmentFlag.AlignHCenter)
         layout.addSpacing(12)
-        layout.addWidget(self.etiqueta("Todo listo para continuar", 24, "#F4F2ED"))
+        layout.addWidget(self.etiqueta("Todo listo para continuar", 24, "#eaf3ff"))
         layout.addWidget(self.etiqueta("Tus pedidos siguen donde los dejaste", 14, "#A8B4C8"))
         layout.addStretch(2)
-        layout.addWidget(self.etiqueta("Toca la pantalla o pulsa una tecla", 15, "#E4BD76"))
+        layout.addWidget(self.etiqueta("Toca la pantalla o pulsa una tecla", 15, "#79eaff"))
         layout.addWidget(self.etiqueta("MODO DE ESPERA", 10, "#71819B"))
         self.actualizador = QTimer(self)
         self.actualizador.setInterval(1000)
@@ -96,7 +96,7 @@ class PantallaEspera(FondoEspera):
 
     def resizeEvent(self, event):
         tamano = max(40, min(84, self.height() // 8))
-        self.reloj.setStyleSheet(f"font-family: 'Segoe UI'; font-size: {tamano}px; color: #F4F2ED; font-weight: 300;")
+        self.reloj.setStyleSheet(f"font-family: 'Segoe UI'; font-size: {tamano}px; color: #eaf3ff; font-weight: 300;")
         super().resizeEvent(event)
 
 
@@ -106,6 +106,7 @@ class ControlEspera(QObject):
     def __init__(self, ventana, segundos=120):
         super().__init__(ventana)
         self.ventana = ventana
+        self._cerrando = False
         self.capa = PantallaEspera(ventana)
         self.foco_anterior = None
         self.tecla_despertar = None
@@ -120,10 +121,30 @@ class ControlEspera(QObject):
         self.raton.start()
         self.atajo = QShortcut(QKeySequence("Ctrl+L"), ventana)
         self.atajo.activated.connect(self.mostrar)
-        QApplication.instance().installEventFilter(self)
+        app = QApplication.instance()
+        app.installEventFilter(self)
+        app.aboutToQuit.connect(self.detener)
+        ventana.destroyed.connect(self.detener)
         self.temporizador.start()
 
+    def detener(self, *_):
+        if self._cerrando:
+            return
+        self._cerrando = True
+        app = QApplication.instance()
+        if app is not None and isValid(app) and isValid(self):
+            app.removeEventFilter(self)
+        for temporizador in (self.temporizador, self.raton):
+            if isValid(temporizador):
+                temporizador.stop()
+
+    def _disponible(self):
+        return (not self._cerrando and not QApplication.closingDown()
+                and isValid(self.ventana) and isValid(self.capa))
+
     def comprobar_raton(self):
+        if not self._disponible():
+            return
         posicion = QCursor.pos()
         if posicion != self.posicion_cursor:
             self.posicion_cursor = posicion
@@ -132,6 +153,8 @@ class ControlEspera(QObject):
                 self.temporizador.start()
 
     def mostrar(self):
+        if not self._disponible():
+            return
         if self.ventana.property('accesoEnCurso') or self.ventana.property('dialogoEnCurso'):
             self.temporizador.start()
             return
@@ -150,6 +173,8 @@ class ControlEspera(QObject):
         self.capa.setFocus()
 
     def continuar(self):
+        if not self._disponible():
+            return
         self.capa.hide()
         if self.foco_anterior is not None:
             try:
@@ -160,7 +185,7 @@ class ControlEspera(QObject):
         self.temporizador.start()
 
     def eventFilter(self, objeto, evento):
-        if not isValid(self.ventana):
+        if not self._disponible() or not isValid(objeto):
             return False
         tipo = evento.type()
         if objeto is self.ventana and tipo == QEvent.Type.Resize:

@@ -95,6 +95,11 @@ def inicializar_catalogo(sesion, productos_iniciales):
             """)
         if "seccion" not in columnas:
             conexion.execute("ALTER TABLE productos ADD COLUMN seccion TEXT")
+        if "cantidad_acompanamientos" not in columnas:
+            conexion.execute("ALTER TABLE productos ADD COLUMN cantidad_acompanamientos INTEGER NOT NULL DEFAULT 1")
+        if "lleva_acompanamiento" not in columnas:
+            conexion.execute("ALTER TABLE productos ADD COLUMN lleva_acompanamiento INTEGER NOT NULL DEFAULT 1")
+            conexion.execute("UPDATE productos SET lleva_acompanamiento=0 WHERE lower(trim(nombre)) IN ('salchipapa', 'salchipapas')")
         if "preparaciones" not in columnas:
             conexion.execute("ALTER TABLE productos ADD COLUMN preparaciones TEXT")
         for producto in productos_iniciales:
@@ -115,13 +120,13 @@ def cargar_productos(sesion):
     """Devuelve solo productos activos para los botones de las mesas."""
     with sesion.conexion() as conexion:
         filas = conexion.execute(
-            "SELECT id, nombre, precio_centimos, categoria, imagen, seccion, preparaciones "
+            "SELECT id, nombre, precio_centimos, categoria, imagen, seccion, preparaciones, lleva_acompanamiento, cantidad_acompanamientos "
             "FROM productos WHERE activo = 1 ORDER BY id"
         ).fetchall()
     return [dict(id=identificador, nombre=n, precio=p / 100, categoria=c, imagen=i,
                  seccion=seccion or seccion_inicial(n, c),
-                 preparaciones=preparaciones_iniciales(n) if prep is None else prep)
-            for identificador, n, p, c, i, seccion, prep in filas]
+                 preparaciones=preparaciones_iniciales(n) if prep is None else prep, lleva_acompanamiento=bool(lleva), cantidad_acompanamientos=cantidad)
+            for identificador, n, p, c, i, seccion, prep, lleva, cantidad in filas]
 
 
 METODOS_PAGO = ('Clave', 'Visa', 'Yappy', 'Efectivo')
@@ -150,6 +155,8 @@ def registrar_venta(sesion, nombre_mesa, clientes, productos, turno_id=None, *, 
     """
     if sesion.usuario is None:
         raise PermissionError('Inicia sesión para cobrar.')
+    if sesion.usuario.get('rol') in ('mesero', 'cocinero'):
+        raise PermissionError('Este rol no tiene permiso para cobrar.')
     es_venta_libre = sesion.usuario.get('tipo') == 'venta_libre'
     if turno_id is None and sesion.usuario['rol'] != 'admin' and not es_venta_libre:
         raise PermissionError('Un usuario de caja necesita un turno activo para cobrar.')
@@ -221,6 +228,9 @@ def registrar_venta(sesion, nombre_mesa, clientes, productos, turno_id=None, *, 
                     producto_id, nombre, categoria, cantidad,
                     sesion.usuario['id'], turno_id, f'Cobro · {metodo_pago}',
                 ))
+        if es_venta_libre:
+            from hojas_venta_libre import venta
+            venta(conexion,sesion.usuario,productos)
         conexion.execute(
             'INSERT INTO ventas(fecha, mesa, cliente, productos, total, turno_id, metodo_pago, cajero_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
             (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), nombre_operacion(nombre_mesa), clientes,

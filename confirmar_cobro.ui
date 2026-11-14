@@ -2,19 +2,19 @@
 <ui version="4.0">
  <class>DialogCobro</class>
  <widget class="QWidget" name="DialogCobro">
- <property name="styleSheet"><string>QWidget#DialogCobro {background: qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #10221e,stop:0.55 #233932,stop:1 #101929); border: 2px solid #52647a; border-radius: 26px;}
+ <property name="styleSheet"><string>QWidget#DialogCobro {background: qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #101e34,stop:0.55 #233932,stop:1 #101929); border: 2px solid #52647a; border-radius: 26px;}
 QFrame#resumen {background: qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #2a443b,stop:1 #1b312a); border:2px solid #687c96; border-radius:22px;}
 QLabel {background:transparent; color:#dce5f1; font-size:20px;}
 QLabel#lblPago {font-size:30px; font-weight:bold; color:#fff7e7;}
 QLabel#lblMesaCobro {font-size:32px; font-weight:bold; color:#fff7e7;}
 QLabel#lblClienteCobro {font-size:21px; color:#dce5f1;}
-QLabel#lblTotalCobro {font-size:40px; font-weight:bold; color:#f2cd84;}
+QLabel#lblTotalCobro {font-size:40px; font-weight:bold; color:#79eaff;}
 QLabel#estadoCobro {color:#ffdc98; font-size:19px;}
 QPushButton {min-height:78px; padding:6px 8px; border-radius:17px; border:2px solid #526782; background:#243f35; color:white; font-size:19px; font-weight:bold;}
 QPushButton:hover {background:#344a66; border-color:#9caec2;}
-QPushButton:checked {background:#55452b; border:3px solid #f2cd84; color:#ffe7b5;}
+QPushButton:checked {background:#55452b; border:3px solid #79eaff; color:#ffe7b5;}
 QPushButton#btnConfirmarCobro {min-height:82px; background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #ffd47f,stop:1 #e5ae4d); border:2px solid #ffe2a8; color:#152033; font-size:24px;}
-QPushButton#btnConfirmarCobro:hover {background:#ffe0a0;}
+QPushButton#btnConfirmarCobro:hover {background:#8cefff;}
 QPushButton#btnConfirmarCobro:disabled {background:#334154; border-color:#405169; color:#b7c2d0;}
 QPushButton#btnCancelarCobro {min-height:68px; background:#18263a; color:#e3ebf7;}
 QPushButton#btnCancelarCobro:hover {background:#263a54; border-color:#8a9db5;}

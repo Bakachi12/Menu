@@ -1,14 +1,16 @@
 """Controles del servidor y bandeja de solicitudes dentro del TPV."""
 from collections import Counter
+from shiboken6 import isValid
 import json
 import socket
 import sqlite3
-from PySide6.QtCore import QPoint, QSettings, QTimer, Qt
+from PySide6.QtCore import QPoint, QSettings, QTimer, Qt, QEvent
 from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (QApplication, QComboBox, QDialog, QFrame, QHBoxLayout,
                                QLabel, QLineEdit, QListWidget, QListWidgetItem,
                                QMessageBox, QPushButton, QScrollArea, QVBoxLayout,
                                QWidget)
+from dialogos import MensajesIntegrados as QMessageBox, FondoFormulario
 from pedidos_table import SolicitudesTable, ServidorTable
 from estilos import FORMULARIOS
 
@@ -25,7 +27,7 @@ class DialogoPedidoMovil(QDialog):
         degradado.setColorAt(0.55, QColor(27, 42, 64, 230))
         degradado.setColorAt(1, QColor(16, 25, 41, 225))
         pintor.fillPath(ruta, degradado)
-        pintor.setPen(QPen(QColor('#D6AE62'), 2))
+        pintor.setPen(QPen(QColor('#20d9f5'), 2))
         pintor.drawPath(ruta)
 
     def keyPressEvent(self, evento):
@@ -41,15 +43,18 @@ class PaginaPedidosTable(QWidget):
         self.sesion, self.turnos = sesion, turnos
         self.al_aceptar, self.boton = al_aceptar, boton
         self.ventana = ventana
+        self._cerrando = False
         self.solicitudes = SolicitudesTable(sesion.ruta)
         self.servidor = ServidorTable(self.solicitudes, sesion.identificar)
         self.ajustes_conexion = QSettings("Bakachi12", "Menu")
         self.solicitud_actual = None
         self.setStyleSheet(FORMULARIOS)
         self._crear_dialogo_pedido()
+        QApplication.instance().aboutToQuit.connect(self.detener_interfaz)
+        ventana.destroyed.connect(self.detener_interfaz)
         layout = QVBoxLayout(self)
         titulo = QLabel('Pedidos pendientes')
-        titulo.setStyleSheet('color: #F2C66D; font-size: 24px;')
+        titulo.setStyleSheet('color: #79eaff; font-size: 24px;')
         layout.addWidget(titulo)
         self.panel = QWidget(self)
         self.panel.setStyleSheet(FORMULARIOS)
@@ -97,6 +102,9 @@ class PaginaPedidosTable(QWidget):
         self.estado_configuracion.setWordWrap(True)
         self.estado_configuracion.setTextFormat(Qt.TextFormat.PlainText)
         opciones.addWidget(self.estado_configuracion)
+        from configuracion_visual import organizar_conexion
+        organizar_conexion(self.panel, self.activar, self.ip, self.nombre, self.enlace,
+                           crear, cocina, self.terminales, revocar, self.estado_configuracion)
         self.cargar_terminales()
         self.lista = QListWidget()
         self.lista.setWordWrap(True)
@@ -158,16 +166,14 @@ class PaginaPedidosTable(QWidget):
             )
 
     def _crear_dialogo_pedido(self):
-        self.dialogo = DialogoPedidoMovil(
-            self.ventana,
-            Qt.WindowType.Dialog
-            | Qt.WindowType.FramelessWindowHint
-            | Qt.WindowType.WindowStaysOnTopHint,
-        )
+        self.cubierta_pedido = FondoFormulario(self.ventana)
+        self.cubierta_pedido.hide()
+        self.dialogo = DialogoPedidoMovil(self.cubierta_pedido)
+        self.dialogo.setWindowFlags(Qt.WindowType.Widget)
+        self.ventana.installEventFilter(self)
         self.dialogo.setObjectName('DialogoPedidoMovil')
         self.dialogo.setWindowTitle('Pedido móvil nuevo')
         self.dialogo.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.dialogo.setWindowModality(Qt.WindowModality.ApplicationModal)
         self.dialogo.setStyleSheet("""
             QDialog#DialogoPedidoMovil {
                 background: transparent;
@@ -185,7 +191,7 @@ class PaginaPedidosTable(QWidget):
                 font-size: 18px;
             }
             QLabel#TituloPedidoMovil {
-                color: #f2cd84;
+                color: #79eaff;
                 font-size: 26px;
                 font-weight: bold;
             }
@@ -195,12 +201,12 @@ class PaginaPedidosTable(QWidget):
                 font-weight: bold;
             }
             QLabel#TotalPedidoMovil {
-                color: #f2cd84;
+                color: #79eaff;
                 font-size: 34px;
                 font-weight: bold;
             }
             QLabel#ProductosPedidoMovil {
-                color: #F4F2ED;
+                color: #eaf3ff;
                 font-size: 20px;
             }
             QLabel#EstadoPedidoMovil {
@@ -213,7 +219,7 @@ class PaginaPedidosTable(QWidget):
                 border-radius: 13px;
                 padding: 8px 18px;
                 background: #263951;
-                color: #F4F2ED;
+                color: #eaf3ff;
                 font-size: 20px;
                 font-weight: bold;
             }
@@ -224,7 +230,7 @@ class PaginaPedidosTable(QWidget):
                 color: #152033;
                 font-size: 22px;
             }
-            QPushButton#AceptarPedidoMovil:hover { background: #f2cd84; }
+            QPushButton#AceptarPedidoMovil:hover { background: #79eaff; }
             QPushButton#RechazarPedidoMovil {
                 background: #512E3A;
                 border-color: #86505A;
@@ -314,13 +320,7 @@ class PaginaPedidosTable(QWidget):
 
     def _mostrar_pedido(self, solicitud):
         productos = json.loads(solicitud['productos'])
-        cantidades = Counter(
-            (producto['nombre'], producto['categoria']) for producto in productos
-        )
-        lineas = [
-            f'{cantidad} × {nombre} · {categoria}'
-            for (nombre, categoria), cantidad in cantidades.items()
-        ]
+        lineas = self._lineas_productos(productos)
         total = sum(round(producto['precio'] * 100) for producto in productos) / 100
         self.destino_pedido.setText(f"Destino: {solicitud['mesa']}")
         self.cliente_pedido.setText(
@@ -338,30 +338,59 @@ class PaginaPedidosTable(QWidget):
         self.estado_pedido.clear()
         self.solicitud_actual = solicitud['id']
 
-        pantalla = self.ventana.screen() or QApplication.primaryScreen()
-        if pantalla is not None:
-            limites = pantalla.availableGeometry()
-            ancho = min(820, limites.width() - 32)
-            alto = min(700, limites.height() - 32)
-            ancho = max(320, ancho)
-            alto = max(420, alto)
-            self.dialogo.resize(ancho, alto)
-            self.dialogo.move(
-                QPoint(
-                    limites.x() + (limites.width() - ancho) // 2,
-                    limites.y() + (limites.height() - alto) // 2,
-                )
-            )
-        self.dialogo.open()
+        self._central_habilitado = self.ventana.centralWidget().isEnabled()
+        self._dialogo_anterior = self.ventana.property('dialogoEnCurso')
+        self.ventana.setProperty('dialogoEnCurso', True)
+        self.ventana.centralWidget().setEnabled(False)
+        self._ajustar_pedido()
+        self.cubierta_pedido.show()
+        self.cubierta_pedido.raise_()
+        self.dialogo.show()
         self.dialogo.raise_()
-        self.dialogo.activateWindow()
+        self.btn_aceptar_pedido.setFocus()
+
+    @staticmethod
+    def _lineas_productos(productos):
+        cantidades = Counter((p['nombre'], p['categoria'], p.get('preparacion', ''),
+                              p.get('acompanamiento', ''), p.get('extra', '')) for p in productos)
+        return [f'{cantidad} × {nombre} · {categoria}' +
+                (' · ' + ' · '.join(v for v in (preparacion, lado, 'Extra: ' + extra if extra else '') if v)
+                 if any((preparacion, lado, extra)) else '')
+                for (nombre, categoria, preparacion, lado, extra), cantidad in cantidades.items()]
+
+    def _ajustar_pedido(self):
+        self.cubierta_pedido.setGeometry(self.ventana.rect())
+        ancho = min(820, max(240, self.ventana.width() - 32))
+        alto = min(700, max(240, self.ventana.height() - 32))
+        self.dialogo.setGeometry((self.ventana.width() - ancho) // 2,
+                                (self.ventana.height() - alto) // 2, ancho, alto)
+
+    def detener_interfaz(self, *_):
+        if self._cerrando:
+            return
+        self._cerrando = True
+        if isValid(self.ventana) and isValid(self):
+            self.ventana.removeEventFilter(self)
+        for nombre in ('temporizador', 'reintento_conexion'):
+            temporizador = getattr(self, nombre, None)
+            if temporizador is not None and isValid(temporizador):
+                temporizador.stop()
+
+    def eventFilter(self, objeto, evento):
+        if (self._cerrando or QApplication.closingDown() or not isValid(self)
+                or not isValid(self.ventana) or not isValid(objeto)):
+            return False
+        if objeto is self.ventana and evento.type() == QEvent.Type.Resize:
+            if isValid(self.cubierta_pedido) and isValid(self.dialogo):
+                self._ajustar_pedido()
+        return False
 
     def _mostrar_siguiente_pedido(self, pendientes):
         if self.solicitud_actual or not pendientes or self.dialogo.isVisible():
             return
         if not self.ventana.isVisible() or self.ventana.isMinimized():
             return
-        if QApplication.activeModalWidget() is not None:
+        if QApplication.activeModalWidget() is not None or self.ventana.property('dialogoEnCurso'):
             return
         try:
             self.turnos.exigir_turno_activo()
@@ -449,8 +478,7 @@ class PaginaPedidosTable(QWidget):
             self.lista.clear()
             for solicitud in pendientes:
                 productos = json.loads(solicitud['productos'])
-                cantidades = Counter((p['nombre'], p['categoria']) for p in productos)
-                detalle = ', '.join(f'{cantidad} × {nombre}' for (nombre, categoria), cantidad in cantidades.items())
+                detalle = ', '.join(self._lineas_productos(productos))
                 cliente = self._nombre_cliente(solicitud['cliente_id'])
                 texto = (f"{solicitud['mesa']} · {cliente} · {solicitud['dispositivo']} · {solicitud['emisor'] or 'Sin usuario registrado'}\n"
                          f"{detalle}\nB/.{sum(round(p['precio'] * 100) for p in productos) / 100:.2f}"
@@ -487,6 +515,9 @@ class PaginaPedidosTable(QWidget):
             if desde_dialogo:
                 self.solicitud_actual = None
                 self.dialogo.hide()
+                self.cubierta_pedido.hide()
+                self.ventana.centralWidget().setEnabled(self._central_habilitado)
+                self.ventana.setProperty('dialogoEnCurso', self._dialogo_anterior)
             self.mensaje.setText(
                 'Solicitud añadida a la cuenta.' if aceptar
                 else 'Solicitud rechazada.'

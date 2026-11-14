@@ -31,15 +31,23 @@ jobs:
 
       - name: Compilar Menu.exe
         shell: pwsh
-        run: >-
-          python -m PyInstaller --clean --noconfirm --onefile --windowed --name Menu
-          --add-data "inicio.ui;."
-          --add-data "pedido.ui;."
-          --add-data "confirmar_cobro.ui;."
-          --add-data "fondo_bar.png;."
-          --add-data "imagenes_pagos;imagenes_pagos"
-          --add-data "pedidos_table.html;."
-          Main.py
+        run: python -m PyInstaller --clean --noconfirm menu_windows.spec
+
+      - name: Comprobar arranque del ejecutable
+        shell: pwsh
+        run: |
+          $informe = Join-Path $env:RUNNER_TEMP 'menu-arranque.json'
+          $proceso = Start-Process -FilePath '.\dist\Menu.exe' -ArgumentList @('--comprobar-arranque', "`"$informe`"") -WindowStyle Hidden -PassThru
+          if (-not $proceso.WaitForExit(60000)) {
+            $proceso.Kill()
+            throw 'El ejecutable no terminó la comprobación de arranque.'
+          }
+          if ($proceso.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $informe)) {
+            throw 'El ejecutable no pudo iniciar Qt.'
+          }
+          $resultado = Get-Content -LiteralPath $informe -Raw | ConvertFrom-Json
+          if (-not $resultado.ok) { throw $resultado.error }
+          Get-Content -LiteralPath $informe
 
       - name: Publicar ejecutable en GitHub Releases
         uses: softprops/action-gh-release@v2

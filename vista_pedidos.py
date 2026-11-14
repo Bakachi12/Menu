@@ -71,7 +71,7 @@ def crear_fila_producto(nombre, cantidad, subtotal, al_restar, al_sumar):
 
     boton_mas.setStyleSheet("""
         QPushButton {
-            background-color: #D4AF37;
+            background-color: #25d6f4;
             color: black;
             border: none;
             border-radius: 7px;
@@ -102,7 +102,8 @@ def poner_imagen_producto(boton, producto):
         return
 
     boton.setText("")
-    boton.setMinimumHeight(200)
+    boton.setFixedHeight(224)
+    boton.setStyleSheet(BOTON_PRODUCTO + "QPushButton { padding: 0px; min-height: 224px; max-height: 224px; }")
     boton.setAccessibleName(
         f"{producto['nombre']}, B/.{producto['precio']:.2f}"
     )
@@ -112,6 +113,8 @@ def poner_imagen_producto(boton, producto):
     distribucion.setSpacing(6)
 
     foto = QLabel()
+    foto.setFixedHeight(100)
+    foto.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
     foto.setPixmap(
         imagen.scaled(
             150, 100,
@@ -124,6 +127,8 @@ def poner_imagen_producto(boton, producto):
         f"{producto['nombre']}\nB/.{producto['precio']:.2f}"
     )
     texto.setWordWrap(True)
+    texto.setMinimumHeight(64)
+    texto.setTextFormat(Qt.TextFormat.PlainText)
 
     for etiqueta in (foto, texto):
         etiqueta.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -133,7 +138,7 @@ def poner_imagen_producto(boton, producto):
         etiqueta.setStyleSheet("""
             background: transparent;
             border: none;
-            color: #F4F2ED;
+            color: #eaf3ff;
             font-size: 18px;
             font-weight: bold;
             padding: 0px;
@@ -206,7 +211,7 @@ def dibujar_cuenta(lista_pedido, lbl_total, productos, clientes, cliente_activo,
         nombre.setTextFormat(Qt.TextFormat.PlainText)
         nombre.setStyleSheet('background: transparent; padding: 0; border: none; color: #FAF5EA; font-size: 18px; font-weight: bold;')
         importe = QLabel(f'B/.{subtotal_cliente / 100:.2f}')
-        importe.setStyleSheet('background: transparent; padding: 0; border: none; color: #F2C66D; font-size: 15px;')
+        importe.setStyleSheet('background: transparent; padding: 0; border: none; color: #85eaff; font-size: 15px;')
         importe.setFixedHeight(importe.sizeHint().height())
         for etiqueta in (nombre, importe):
             etiqueta.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
@@ -222,11 +227,11 @@ def dibujar_cuenta(lista_pedido, lbl_total, productos, clientes, cliente_activo,
             retirar.setToolTip('Quita al cliente de esta mesa sin borrar su registro ni cobrar')
             retirar.setMinimumSize(88, 52)
             retirar.setStyleSheet('''
-                QPushButton#RetirarClienteMesa { background: #303C50; color: #F4F2ED;
+                QPushButton#RetirarClienteMesa { background: #303C50; color: #eaf3ff;
                     border: 1px solid #53647D; border-radius: 8px; padding: 8px 12px;
                     font-size: 14px; font-weight: bold; }
-                QPushButton#RetirarClienteMesa:hover { background: #46566B; border-color: #D6AE62; }
-                QPushButton#RetirarClienteMesa:pressed { background: #D6AE62; color: #132320; }
+                QPushButton#RetirarClienteMesa:hover { background: #46566B; border-color: #23d7f4; }
+                QPushButton#RetirarClienteMesa:pressed { background: #23d7f4; color: #0b1425; }
             ''')
             retirar.clicked.connect(
                 lambda checked=False, c=identificador: al_retirar(c)
@@ -287,7 +292,7 @@ class RejillaProductos(QWidget):
         layout.setSpacing(10)
 
     def distribuir(self):
-        columnas = max(1, min(4, (self.width() - 10) // 174))
+        columnas = max(1, min(6, (self.width() - 10) // 200))
         if columnas != self.columnas:
             self.columnas = columnas
             for boton in self.botones:
@@ -318,11 +323,11 @@ def dibujar_productos(area, productos, al_agregar, agotados=()):
         boton = QPushButton(f"{producto['nombre']}\nB/.{producto['precio']:.2f}")
         boton.setMinimumSize(120, 108)
         boton.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        boton.setStyleSheet(BOTON_PRODUCTO)
+        boton.setStyleSheet(BOTON_PRODUCTO + "QPushButton { min-height: 108px; max-height: 108px; padding: 8px; }")
         if producto.get('id') in agotados:
             boton.setText(f"{producto['nombre']}\nNo disponible")
             boton.setEnabled(False)
-            boton.setStyleSheet(BOTON_PRODUCTO + "QPushButton:disabled { color: #edb694; background: #26272b; }")
+            boton.setStyleSheet(BOTON_PRODUCTO + "QPushButton { min-height: 108px; max-height: 108px; padding: 8px; } QPushButton:disabled { color: #edb694; background: #26272b; }")
         else:
             poner_imagen_producto(boton, producto)
         boton.clicked.connect(lambda checked=False, p=producto: al_agregar(p))
@@ -331,67 +336,155 @@ def dibujar_productos(area, productos, al_agregar, agotados=()):
 
 
 def personalizar_plato(parent, producto, acompanamientos, recargos):
-    from PySide6.QtWidgets import QComboBox, QDialog
+    from PySide6.QtWidgets import QButtonGroup, QDialog, QStackedWidget
+    from dialogos import DialogoIntegrado
     from cocina import opciones
-    from estilos import FORMULARIOS
 
-    dialogo = QDialog(parent)
+    dialogo = DialogoIntegrado(parent)
+    dialogo.setProperty('compacto', True)
     dialogo.setWindowTitle(producto['nombre'])
-    dialogo.setStyleSheet(FORMULARIOS)
+    dialogo.setStyleSheet("""
+        QWidget { background: #101b2e; }
+        QLabel { color: #eeeadd; background: transparent; border: none; font-size: 16px; }
+        QPushButton { background: #11283f; color: #eaf3ff; border: 1px solid #287b99;
+            border-radius: 12px; padding: 14px; font-size: 17px; }
+        QPushButton:checked { background: #23d7f4; color: #071725; border: 2px solid #8cefff; }
+        QPushButton:disabled { background: #283b34; color: #82978d; }
+        QPushButton#ContinuarPlato { background: #23d7f4; color: #071725; font-weight: 600; }
+        QPushButton#ContinuarPlato:disabled { background: #283b34; color: #82978d; }
+    """)
     layout = QVBoxLayout(dialogo)
-    titulo = QLabel(producto['nombre'])
-    titulo.setTextFormat(Qt.TextFormat.PlainText)
-    layout.addWidget(titulo)
+    layout.setContentsMargins(4, 4, 4, 4)
+    layout.setSpacing(14)
+    progreso = QLabel()
+    progreso.setStyleSheet('color: #23d7f4; font-size: 14px;')
+    layout.addWidget(progreso)
+    paginas = QStackedWidget()
+    layout.addWidget(paginas)
+    from cocina import preparaciones_con_recargo
+    lleva_acompanamiento = producto.get('lleva_acompanamiento', True)
+    cargos_preparacion = preparaciones_con_recargo(producto.get('preparaciones', ''))
+    variantes = opciones(producto.get('preparaciones', ''))
+    if not variantes and 'hamburguesa' in producto['nombre'].casefold():
+        variantes = ['Completa', 'Sin vegetales']
+    if not lleva_acompanamiento and not variantes:
+        return dict(preparacion='', acompanamiento='', extra='', recargo_centimos=0)
+    seleccion = {'preparacion': '', 'acompanamiento': ''}
+    grupos = []
+    preparaciones_elegidas = []
+    lados_elegidos = []
+    limite_lados = max(1, int(producto.get('cantidad_acompanamientos', 1)))
 
-    def selector(etiqueta, valores):
-        layout.addWidget(QLabel(etiqueta))
-        campo = QComboBox()
-        campo.setMinimumHeight(48)
-        campo.setPlaceholderText('Selecciona una opción')
-        campo.addItems(valores)
-        campo.setCurrentIndex(-1)
-        layout.addWidget(campo)
-        return campo
+    def pagina(etiqueta, valores, campo):
+        widget = QWidget()
+        caja = QVBoxLayout(widget)
+        caja.setContentsMargins(0, 0, 0, 0)
+        titulo = QLabel(etiqueta)
+        titulo.setWordWrap(True)
+        titulo.setStyleSheet('font-size: 23px; font-weight: 600;')
+        caja.addWidget(titulo)
+        rejilla = QGridLayout()
+        rejilla.setSpacing(10)
+        grupo = QButtonGroup(dialogo)
+        grupo.setExclusive(campo == 'acompanamiento' and limite_lados == 1)
+        grupos.append(grupo)
+        for indice, valor in enumerate(valores):
+            cargo_opcion = cargos_preparacion.get(valor, 0) if campo == 'preparacion' else 0
+            boton = QPushButton(valor + (f' (+B/.{cargo_opcion / 100:.2f})' if cargo_opcion else ''))
+            boton.setMinimumHeight(68)
+            boton.setCheckable(True)
+            boton.setProperty('opcionPlato', campo)
+            grupo.addButton(boton)
+            rejilla.addWidget(boton, indice // 2, indice % 2)
+            boton.clicked.connect(lambda checked=False, v=valor: elegir(campo, v))
+        caja.addLayout(rejilla)
+        caja.addStretch()
+        paginas.addWidget(widget)
+        return caja
 
-    variantes = opciones(producto['preparaciones'])
-    preparacion = selector('Preparación', variantes) if variantes else None
-    lado = selector('Acompañamiento', acompanamientos)
-    lado.setEnabled(preparacion is None)
-    fila = QHBoxLayout()
-    cancelar = QPushButton('Cancelar')
+    if variantes:
+        pagina('Preparaciones · puedes marcar varias', variantes, 'preparacion')
+    caja_lados = pagina(f'Elige hasta {limite_lados} acompañamientos incluidos' if limite_lados > 1 else 'Elige el acompañamiento', acompanamientos, 'acompanamiento') if lleva_acompanamiento else QVBoxLayout()
     extra = QPushButton('Añadir porción extra')
+    extra.setMinimumHeight(56)
     extra.setCheckable(True)
     extra.setEnabled(False)
-    layout.addWidget(extra)
+    if lleva_acompanamiento:
+        caja_lados.insertWidget(caja_lados.count() - 1, extra)
+    else:
+        extra.hide()
+    resumen = QLabel()
+    resumen.setWordWrap(True)
+    layout.addWidget(resumen)
     importe = QLabel()
+    importe.setStyleSheet('font-size: 21px; color: #79eaff; font-weight: 600;')
     layout.addWidget(importe)
-    def actualizar_importe():
-        adicional = recargos.get(lado.currentText(), 0) if extra.isChecked() else 0
-        importe.setText(f"Total del plato: B/.{(centimos(producto) + adicional) / 100:.2f}")
-    def cambiar_lado():
-        cargo = recargos.get(lado.currentText(), 0)
-        extra.setChecked(False)
-        extra.setEnabled(cargo > 0)
-        extra.setText(f"Porción extra de {lado.currentText()} (+B/.{cargo / 100:.2f})"
-                      if cargo else "Porción extra no disponible")
-        actualizar_importe()
-    extra.setStyleSheet('QPushButton:checked { background: #294f3e; color: white; }')
-    extra.toggled.connect(actualizar_importe)
-    lado.currentIndexChanged.connect(cambiar_lado)
-    actualizar_importe()
-    agregar = QPushButton('Aceptar')
-    agregar.setDefault(True)
-    agregar.setEnabled(False)
-    cancelar.clicked.connect(dialogo.reject)
-    agregar.clicked.connect(dialogo.accept)
-    if preparacion is not None:
-        preparacion.currentIndexChanged.connect(lambda indice: lado.setEnabled(indice >= 0))
-    lado.currentIndexChanged.connect(lambda indice: agregar.setEnabled(indice >= 0))
-    fila.addWidget(cancelar)
-    fila.addWidget(agregar)
+    fila = QHBoxLayout()
+    atras = QPushButton('Atrás')
+    siguiente = QPushButton('Siguiente')
+    siguiente.setObjectName('ContinuarPlato')
+    siguiente.setMinimumHeight(56)
+    fila.addWidget(atras)
+    fila.addWidget(siguiente, 1)
     layout.addLayout(fila)
+
+    def actualizar():
+        en_lados = not variantes or paginas.currentIndex() == 1
+        progreso.setText(('Paso 2 de 2 · Acompañamiento' if en_lados else 'Paso 1 de 2 · Preparación')
+                         if variantes else 'Acompañamiento')
+        if not lleva_acompanamiento:
+            progreso.setText('Preparaciones')
+        atras.setVisible(bool(variantes) and en_lados)
+        siguiente.setText('Añadir al pedido' if en_lados or not lleva_acompanamiento else 'Siguiente · Acompañamiento')
+        siguiente.setEnabled(bool(seleccion['acompanamiento' if en_lados else 'preparacion']))
+        lado_extra = lados_elegidos[-1] if lados_elegidos else ''
+        extra.setEnabled(recargos.get(lado_extra, 0) > 0)
+        cargo = recargos.get(lado_extra, 0)
+        for grupo in grupos:
+            for boton in grupo.buttons():
+                if boton.property('opcionPlato') == 'acompanamiento' and limite_lados > 1:
+                    boton.setEnabled(boton.isChecked() or len(lados_elegidos) < limite_lados)
+        extra.setText(f'Porción extra (+B/.{cargo / 100:.2f})' if cargo else 'Porción extra no disponible')
+        if limite_lados > 1 and cargo:
+            extra.setText(f'Porción extra de {lado_extra} (+B/.{cargo / 100:.2f})')
+        adicional = (cargo if extra.isChecked() else 0) + sum(cargos_preparacion.get(v, 0) for v in preparaciones_elegidas)
+        importe.setText(f'Total: B/.{(centimos(producto) + adicional) / 100:.2f}')
+        resumen.setText(' · '.join(v for v in seleccion.values() if v))
+
+    def elegir(campo, valor):
+        if campo == 'preparacion':
+            if valor in preparaciones_elegidas:
+                preparaciones_elegidas.remove(valor)
+            else:
+                preparaciones_elegidas.append(valor)
+            seleccion[campo] = ' · '.join(preparaciones_elegidas)
+        else:
+            if limite_lados == 1:
+                lados_elegidos[:] = [valor]
+            elif valor in lados_elegidos:
+                lados_elegidos.remove(valor)
+            else:
+                lados_elegidos.append(valor)
+            seleccion[campo] = ' · '.join(lados_elegidos)
+        if campo == 'acompanamiento':
+            extra.setChecked(False)
+        actualizar()
+
+    def continuar():
+        if not lleva_acompanamiento:
+            dialogo.accept()
+        elif variantes and paginas.currentIndex() == 0:
+            paginas.setCurrentIndex(1)
+            actualizar()
+        elif seleccion['acompanamiento']:
+            dialogo.accept()
+
+    atras.clicked.connect(lambda: (paginas.setCurrentIndex(0), actualizar()))
+    siguiente.clicked.connect(continuar)
+    extra.toggled.connect(actualizar)
+    actualizar()
     if dialogo.exec() == QDialog.DialogCode.Accepted:
-        return dict(preparacion=preparacion.currentText() if preparacion else '',
-                    acompanamiento=lado.currentText(),
-                    extra=lado.currentText() if extra.isChecked() else '',
-                    recargo_centimos=recargos[lado.currentText()] if extra.isChecked() else 0)
+        return dict(preparacion=seleccion['preparacion'], acompanamiento=seleccion['acompanamiento'],
+                        extra=lados_elegidos[-1] if extra.isChecked() and lados_elegidos else '',
+                        recargo_centimos=(recargos.get(lados_elegidos[-1], 0) if extra.isChecked() and lados_elegidos else 0)
+                        + sum(cargos_preparacion.get(v, 0) for v in preparaciones_elegidas))

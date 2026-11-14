@@ -6,6 +6,111 @@ from PySide6.QtWidgets import (
     QLineEdit, QPushButton, QVBoxLayout, QWidget,
 )
 from shiboken6 import isValid
+from PySide6.QtWidgets import QDialog, QScrollArea
+
+
+class FondoFormulario(QWidget):
+    def paintEvent(self, evento):
+        painter = QPainter(self)
+        painter.fillRect(self.rect(), QColor(3, 8, 17, 155))
+
+
+class DialogoIntegrado(QDialog):
+    """Formulario alojado dentro de la ventana principal, sin ventana nativa."""
+
+    def exec(self):
+        ventana = self.parentWidget().window()
+        compacto = bool(self.property('compacto'))
+        cubierta = FondoFormulario(ventana) if compacto else QWidget(ventana)
+        cubierta.setObjectName('CubiertaFormulario')
+        if not compacto:
+            cubierta.setStyleSheet('QWidget#CubiertaFormulario { background: #101e1b; }')
+        exterior = QVBoxLayout(cubierta)
+        exterior.setContentsMargins(24, 24, 24, 24)
+        tarjeta = QWidget()
+        tarjeta.setObjectName('TarjetaFormulario')
+        tarjeta.setStyleSheet('QWidget#TarjetaFormulario { background: #101b2e; border: 1px solid #287b99; border-radius: 18px; }')
+        interior = QVBoxLayout(tarjeta)
+        interior.setContentsMargins(22, 18, 22, 18)
+        if compacto:
+            tarjeta.setFixedSize(min(int(self.property('anchoCompacto') or 660), max(160, ventana.width() - 48)),
+                                 min(int(self.property('altoCompacto') or 620), max(180, ventana.height() - 48)))
+            self._tarjeta_integrada = tarjeta
+            sombra = QGraphicsDropShadowEffect(tarjeta)
+            sombra.setBlurRadius(32)
+            sombra.setOffset(0, 8)
+            tarjeta.setGraphicsEffect(sombra)
+            fila = QHBoxLayout()
+            fila.addStretch()
+            fila.addWidget(tarjeta)
+            fila.addStretch()
+            exterior.addStretch()
+            exterior.addLayout(fila)
+            exterior.addStretch()
+        else:
+            exterior.addWidget(tarjeta)
+        cabecera = QHBoxLayout()
+        titulo = QLabel(self.windowTitle())
+        titulo.setTextFormat(Qt.TextFormat.PlainText)
+        titulo.setStyleSheet('color: #23d7f4; font-size: 24px;')
+        titulo.setWordWrap(True)
+        cabecera.addWidget(titulo, 1)
+        volver = QPushButton('Cancelar' if compacto else 'Volver')
+        volver.setMinimumHeight(48)
+        volver.setStyleSheet('QPushButton { background: #11283f; color: #eaf3ff; border: 1px solid #287b99; border-radius: 10px; padding: 10px 16px; font-size: 16px; }')
+        volver.clicked.connect(self.reject)
+        cabecera.addWidget(volver)
+        interior.addLayout(cabecera)
+        area = QScrollArea()
+        area.setWidgetResizable(True)
+        area.setFrameShape(QScrollArea.Shape.NoFrame)
+        interior.addWidget(area)
+        self.setParent(cubierta, Qt.WindowType.Widget)
+        area.setWidget(self)
+        bucle = QEventLoop()
+        self.finished.connect(bucle.quit)
+        app = QApplication.instance()
+        app.aboutToQuit.connect(self.reject)
+        contenido = ventana.centralWidget()
+        habilitado = contenido.isEnabled()
+        foco = QApplication.focusWidget()
+        anterior = ventana.property('dialogoEnCurso')
+        ventana.setProperty('dialogoEnCurso', True)
+        contenido.setEnabled(False)
+        self._ventana_integrada = ventana
+        self._cubierta_integrada = cubierta
+        ventana.installEventFilter(self)
+        cubierta.setGeometry(ventana.rect())
+        cubierta.show()
+        cubierta.raise_()
+        self.show()
+        self.setFocus()
+        try:
+            bucle.exec()
+            return self.result()
+        finally:
+            ventana.removeEventFilter(self)
+            ventana.setProperty('dialogoEnCurso', anterior)
+            contenido.setEnabled(habilitado)
+            cubierta.hide()
+            if foco is not None and isValid(foco) and foco.isVisible():
+                foco.setFocus()
+            self.finished.disconnect(bucle.quit)
+            app.aboutToQuit.disconnect(self.reject)
+            area.takeWidget()
+            self.setParent(ventana, Qt.WindowType.Widget)
+            cubierta.deleteLater()
+
+    def eventFilter(self, objeto, evento):
+        if objeto is getattr(self, '_ventana_integrada', None):
+            if evento.type() == QEvent.Type.Resize:
+                self._cubierta_integrada.setGeometry(objeto.rect())
+                if self.property('compacto'):
+                    self._tarjeta_integrada.setFixedSize(min(int(self.property('anchoCompacto') or 660), max(160, objeto.width() - 48)),
+                                                        min(int(self.property('altoCompacto') or 620), max(180, objeto.height() - 48)))
+            elif evento.type() == QEvent.Type.Close:
+                self.reject()
+        return super().eventFilter(objeto, evento)
 
 
 class EditorNombreMesa(QWidget):
@@ -19,12 +124,12 @@ class EditorNombreMesa(QWidget):
         self.setStyleSheet('''
             QWidget#TarjetaNombreMesa { background: #111D2F; border: 1px solid #465064; border-radius: 20px; }
             QLabel { color: #C1CDDF; background: transparent; border: none; font-size: 14px; }
-            QLineEdit { background: #0B1525; color: #F4F2ED; border: 1px solid #40594f;
+            QLineEdit { background: #0B1525; color: #eaf3ff; border: 1px solid #20354f;
                 border-radius: 9px; padding: 13px; font-size: 17px; }
-            QLineEdit:focus { border: 1px solid #D6AE62; }
-            QPushButton { background: #D6AE62; color: #132320; border: none;
+            QLineEdit:focus { border: 1px solid #23d7f4; }
+            QPushButton { background: #23d7f4; color: #0b1425; border: none;
                 border-radius: 9px; padding: 14px; font-size: 16px; }
-            QPushButton:hover { background: #F2C66D; }
+            QPushButton:hover { background: #85eaff; }
             QPushButton#CancelarNombre { background: #233249; color: #E2E8F0; }
             QPushButton#CancelarNombre:hover { background: #34465F; }
         ''')
@@ -45,7 +150,7 @@ class EditorNombreMesa(QWidget):
         self.mesa = QLabel()
         self.mesa.setWordWrap(True)
         self.mesa.setTextFormat(Qt.TextFormat.PlainText)
-        self.mesa.setStyleSheet('color: #D6AE62; font-size: 13px;')
+        self.mesa.setStyleSheet('color: #23d7f4; font-size: 13px;')
         interior.addWidget(self.mesa)
         titulo = QLabel('Nombre de la mesa')
         self.titulo = titulo
@@ -174,3 +279,71 @@ class EditorNombreCliente(EditorNombreMesa):
             self.ayuda.setText('No se pudo guardar el cliente. Inténtalo de nuevo.')
         finally:
             self.guardar_boton.setEnabled(True)
+
+
+class MensajesIntegrados:
+    """Avisos y confirmaciones de la aplicación dentro de su ventana."""
+    from PySide6.QtWidgets import QMessageBox as _Nativo
+    StandardButton = _Nativo.StandardButton
+
+    @classmethod
+    def _mostrar(cls, parent, titulo, texto, botones=None, predeterminado=None):
+        if parent is None or not hasattr(parent.window(), 'centralWidget'):
+            return cls._Nativo.warning(parent, titulo, texto) if botones is None else cls._Nativo.question(parent, titulo, texto, botones)
+        d = DialogoIntegrado(parent)
+        d.setProperty('compacto', True)
+        d.setWindowTitle(titulo)
+        d.setStyleSheet('QWidget { background: #101b2e; color: #eaf3ff; } QPushButton { min-height: 48px; padding: 10px; background: #29473c; border: 1px solid #23d7f4; border-radius: 10px; }')
+        layout = QVBoxLayout(d)
+        mensaje = QLabel(texto)
+        mensaje.setTextFormat(Qt.TextFormat.PlainText)
+        mensaje.setWordWrap(True)
+        layout.addWidget(mensaje)
+        layout.addStretch()
+        fila = QHBoxLayout()
+        resultado = [cls.StandardButton.Cancel if botones else cls.StandardButton.Ok]
+        elecciones = [(cls.StandardButton.Yes, 'Sí, continuar'), (cls.StandardButton.No, 'No'),
+                      (cls.StandardButton.Ok, 'Aceptar'), (cls.StandardButton.Cancel, 'Cancelar')]
+        botones = botones or cls.StandardButton.Ok
+        for codigo, etiqueta in elecciones:
+            if botones & codigo:
+                boton = QPushButton(etiqueta)
+                def elegir(checked=False, valor=codigo):
+                    resultado[0] = valor
+                    d.accept()
+                boton.clicked.connect(elegir)
+                fila.addWidget(boton)
+        layout.addLayout(fila)
+        d.exec()
+        return resultado[0]
+
+    @classmethod
+    def warning(cls, parent, titulo, texto, *args):
+        return cls._mostrar(parent, titulo, texto, *args)
+
+    critical = warning
+    information = warning
+
+    @classmethod
+    def question(cls, parent, titulo, texto, botones=None, predeterminado=None):
+        return cls._mostrar(parent, titulo, texto, botones or (cls.StandardButton.Yes | cls.StandardButton.No), predeterminado)
+
+
+class ArchivosIntegrados:
+    @staticmethod
+    def getOpenFileName(parent, titulo, directorio='', filtro=''):
+        from PySide6.QtWidgets import QFileDialog
+        d = DialogoIntegrado(parent)
+        d.setWindowTitle(titulo)
+        layout = QVBoxLayout(d)
+        selector = QFileDialog(d, titulo, directorio, filtro)
+        selector.setOption(QFileDialog.Option.DontUseNativeDialog, True)
+        selector.setFileMode(QFileDialog.FileMode.ExistingFile)
+        selector.setWindowFlags(Qt.WindowType.Widget)
+        layout.addWidget(selector)
+        selector.accepted.connect(d.accept)
+        selector.rejected.connect(d.reject)
+        if d.exec() == QDialog.DialogCode.Accepted:
+            archivos = selector.selectedFiles()
+            return (archivos[0] if archivos else '', selector.selectedNameFilter())
+        return '', ''

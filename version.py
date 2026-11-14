@@ -2,4 +2,4 @@
 
 El flujo de Release la reemplaza por la versión de la etiqueta al compilar.
 """
-__version__ = "0.1.1"
+__version__ = "0.1.3"

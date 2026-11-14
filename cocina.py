@@ -20,8 +20,33 @@ def preparaciones_iniciales(nombre):
     return 'Al ajillo, Fritos, En salsa roja' if nombre.strip().casefold() == 'camarones' else ''
 
 
+def preparaciones_con_recargo(texto):
+    import json
+    try:
+        valores = json.loads(texto)
+    except (ValueError, TypeError):
+        valores = None
+    if isinstance(valores, list):
+        return {v['nombre']: max(0, int(v.get('centimos', 0))) for v in valores
+                if isinstance(v, dict) and isinstance(v.get('nombre'), str) and v['nombre'].strip()}
+    return dict.fromkeys((valor.strip() for valor in (texto or '').split(',') if valor.strip()), 0)
+
+
+def seleccion_preparaciones(valor, disponibles):
+    if isinstance(valor, str):
+        valores = [valor] if valor in disponibles else (valor.split(' · ') if valor else [])
+    elif isinstance(valor, list):
+        valores = valor
+    else:
+        raise ValueError('Selecciona preparaciones válidas.')
+    if (len(valores) > len(disponibles) or any(not isinstance(v, str) or v not in disponibles for v in valores)
+            or len(set(valores)) != len(valores)):
+        raise ValueError('La preparación ya no está disponible.')
+    return valores
+
+
 def opciones(texto):
-    return list(dict.fromkeys(valor.strip() for valor in texto.split(',') if valor.strip()))
+    return list(preparaciones_con_recargo(texto))
 
 
 def acompanamientos(catalogo):

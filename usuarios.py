@@ -11,10 +11,14 @@ from PySide6.QtCore import Qt, QEvent, QEventLoop, QTimer, QDateTime, QLocale
 from PySide6.QtGui import QColor
 from pantalla_espera import FondoEspera
 from estilos import FORMULARIOS as ESTILO
-from PySide6.QtWidgets import QApplication, QSizePolicy, QGraphicsDropShadowEffect, QDialog, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QListWidget, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QApplication, QSizePolicy, QGraphicsDropShadowEffect, QDialog, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem, QComboBox, QPushButton, QVBoxLayout, QWidget
 
 
-class SesionUsuarios:
+ROLES = {'admin': 'Administrador', 'mesas': 'Cajero · Mesas y Clientes', 'mesero': 'Mesero', 'cocinero': 'Cocinero', 'venta_libre': 'Venta libre · Sin turno'}
+
+from acceso_pin import AccesoPIN
+
+class SesionUsuarios(AccesoPIN):
     ITERACIONES = 600_000
 
     def __init__(self, ruta):
@@ -39,6 +43,22 @@ class SesionUsuarios:
             db.execute("UPDATE usuarios SET usuario = nombre WHERE usuario IS NULL")
             if "tipo" not in columnas:
                 db.execute("ALTER TABLE usuarios ADD COLUMN tipo TEXT NOT NULL DEFAULT 'normal'")
+            if 'eliminado' not in columnas:
+                db.execute('ALTER TABLE usuarios ADD COLUMN eliminado INTEGER NOT NULL DEFAULT 0')
+            esquema = db.execute("SELECT sql FROM sqlite_master WHERE name='usuarios'").fetchone()[0]
+            if "'mesero'" not in esquema:
+                complementos = [r[0] for r in db.execute("SELECT sql FROM sqlite_master WHERE tbl_name='usuarios' AND type IN ('index','trigger') AND sql IS NOT NULL")]
+                db.execute("""CREATE TABLE usuarios_roles (
+                    id INTEGER PRIMARY KEY, nombre TEXT NOT NULL, usuario TEXT,
+                    clave_nombre TEXT NOT NULL UNIQUE, sal BLOB NOT NULL, resumen BLOB NOT NULL,
+                    iteraciones INTEGER NOT NULL, rol TEXT NOT NULL CHECK(rol IN ('admin','mesas','mesero','cocinero')),
+                    tipo TEXT NOT NULL DEFAULT 'normal', eliminado INTEGER NOT NULL DEFAULT 0)""")
+                campos = 'id,nombre,usuario,clave_nombre,sal,resumen,iteraciones,rol,tipo,eliminado'
+                db.execute(f'INSERT INTO usuarios_roles({campos}) SELECT {campos} FROM usuarios')
+                db.execute('DROP TABLE usuarios')
+                db.execute('ALTER TABLE usuarios_roles RENAME TO usuarios')
+                for sql in complementos:
+                    db.execute(sql)
             db.execute(
                 "UPDATE usuarios SET rol = 'mesas', tipo = 'venta_libre' "
                 "WHERE clave_nombre = ?",
@@ -86,7 +106,7 @@ class SesionUsuarios:
             return False
         with self.conexion() as db:
             fila = db.execute(
-                'SELECT id, nombre, usuario, rol, tipo FROM usuarios WHERE id = ?',
+                'SELECT id, nombre, usuario, rol, tipo FROM usuarios WHERE id = ? AND eliminado=0',
                 (usuario_id,),
             ).fetchone()
         if fila is None:
@@ -100,7 +120,7 @@ class SesionUsuarios:
         """Verifica credenciales sin cambiar la sesión de la caja."""
         with self.conexion() as db:
             fila = db.execute('''SELECT id, nombre, usuario, rol, tipo, sal, resumen, iteraciones
-                FROM usuarios WHERE clave_nombre = ?''', (self.clave(usuario),)).fetchone()
+                FROM usuarios WHERE clave_nombre = ? AND eliminado=0''', (self.clave(usuario),)).fetchone()
         # También calcular para nombres desconocidos, sin indicar qué dato falló.
         sal, esperado, vueltas = fila[5:] if fila else (b'\0' * 16, b'\0' * 32, self.ITERACIONES)
         obtenido = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), sal, vueltas)
@@ -116,7 +136,7 @@ class SesionUsuarios:
         """Devuelve el ID del Admin que validó la contraseña, sin cambiar la sesión."""
         with self.conexion() as db:
             filas = db.execute(
-                "SELECT id, sal, resumen, iteraciones FROM usuarios WHERE rol = 'admin'"
+                "SELECT id, sal, resumen, iteraciones FROM usuarios WHERE rol = 'admin' AND eliminado=0"
             ).fetchall()
         administrador_id = None
         for identificador, sal, esperado, vueltas in filas:
@@ -180,7 +200,9 @@ class SesionUsuarios:
         if not self.es_admin():
             raise PermissionError('Esta opción solo está disponible para Admin.')
 
-    def crear(self, nombre, usuario, password):
+    def crear(self, nombre, usuario, password, rol="mesas"):
+        if rol not in ROLES:
+            raise ValueError("Selecciona un rol válido.")
         self.exigir_admin()
         nombre = nombre.strip()
         usuario = usuario.strip()
@@ -192,7 +214,8 @@ class SesionUsuarios:
             raise ValueError('Escribe una contraseña de entre 1 y 128 caracteres.')
         try:
             with self.conexion() as db:
-                self._insertar(db, nombre, usuario, password, 'mesas')
+                self._insertar(db, nombre, usuario, password, 'mesas' if rol == 'venta_libre' else rol,
+                               'venta_libre' if rol == 'venta_libre' else 'normal')
         except sqlite3.IntegrityError as error:
             raise ValueError('Ya existe una cuenta con ese usuario de acceso.') from error
 
@@ -200,8 +223,28 @@ class SesionUsuarios:
         self.exigir_admin()
         with self.conexion() as db:
             return db.execute(
-                'SELECT nombre, usuario, rol, tipo FROM usuarios ORDER BY rol, nombre'
+                'SELECT id, nombre, usuario, rol, tipo FROM usuarios WHERE eliminado=0 ORDER BY rol, nombre'
             ).fetchall()
+
+    def perfil(self, identificador):
+        with self.conexion() as db:
+            fila = db.execute('SELECT id,nombre,usuario,rol,tipo FROM usuarios WHERE id=? AND eliminado=0', (identificador,)).fetchone()
+        return dict(zip(('id','nombre','usuario','rol','tipo'), fila)) if fila else None
+
+    def eliminar(self, identificador):
+        self.exigir_admin()
+        if identificador == self.usuario['id']:
+            raise ValueError('No puedes eliminar la cuenta con la que has iniciado sesión.')
+        with self.conexion() as db:
+            db.execute('BEGIN IMMEDIATE')
+            fila = db.execute('SELECT rol,clave_nombre FROM usuarios WHERE id=? AND eliminado=0', (identificador,)).fetchone()
+            if fila is None:
+                raise ValueError('Ese usuario ya no está disponible.')
+            if fila[1] == self.clave('Ventalibre'):
+                raise ValueError('La cuenta integrada Venta libre debe conservarse.')
+            if fila[0] == 'admin' and db.execute("SELECT COUNT(*) FROM usuarios WHERE rol='admin' AND eliminado=0").fetchone()[0] <= 1:
+                raise ValueError('Debe conservarse al menos un administrador.')
+            db.execute('UPDATE usuarios SET eliminado=1 WHERE id=?', (identificador,))
 
     def actualizar_cuenta(self, usuario, actual, nueva=''):
         """Modificar la cuenta autenticada conservando su identidad y permisos."""
@@ -246,16 +289,16 @@ class DialogoAcceso(FondoEspera):
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setStyleSheet(ESTILO + '''
             QWidget#TarjetaAcceso { background: rgba(17, 29, 47, 235); border: 1px solid #3C4653; border-radius: 20px; }
-            QWidget#TarjetaAcceso QLineEdit { background: #0B1525; border: 1px solid #40594f;
+            QWidget#TarjetaAcceso QLineEdit { background: #0B1525; border: 1px solid #20354f;
                 border-radius: 9px; padding: 12px; font-size: 16px; }
-            QWidget#TarjetaAcceso QLineEdit:focus { border: 1px solid #D6AE62; }
+            QWidget#TarjetaAcceso QLineEdit:focus { border: 1px solid #20d9f5; }
         ''')
         self.distribucion = QVBoxLayout(self)
         self.distribucion.setContentsMargins(30, 24, 30, 24)
         self.distribucion.setSpacing(8)
         marca = QLabel('R E S T A U R A N T E   &   B A R')
         marca.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        marca.setStyleSheet('color: #D6AE62; font-size: 12px;')
+        marca.setStyleSheet('color: #20d9f5; font-size: 12px;')
         self.distribucion.addWidget(marca)
         self.distribucion.addStretch(1)
         self.reloj = QLabel()
@@ -289,6 +332,9 @@ class DialogoAcceso(FondoEspera):
         layout.addWidget(ayuda)
         layout.addSpacing(8)
         self.nombre = QLineEdit()
+        self.selector = QComboBox()
+        self.selector.setMinimumHeight(52)
+        self.selector.currentIndexChanged.connect(self.seleccionar_usuario)
         self.nombre.setObjectName('usuarioAcceso')
         self.nombre.setPlaceholderText('Tu usuario')
         self.nombre.setMaxLength(50)
@@ -297,7 +343,7 @@ class DialogoAcceso(FondoEspera):
         self.password.setPlaceholderText('Tu contraseña')
         self.password.setMaxLength(128)
         self.password.setEchoMode(QLineEdit.EchoMode.Password)
-        for titulo_campo, campo in (('Usuario', self.nombre), ('Contraseña', self.password)):
+        for titulo_campo, campo in (('Selecciona tu usuario', self.selector), ('PIN o contraseña', self.password)):
             etiqueta = QLabel(titulo_campo)
             etiqueta.setStyleSheet('color: #C0CBDA; font-size: 13px;')
             layout.addWidget(etiqueta)
@@ -330,6 +376,25 @@ class DialogoAcceso(FondoEspera):
         self.reloj_timer.timeout.connect(self.actualizar_reloj)
         self.hide()
 
+    def seleccionar_usuario(self, *_):
+        datos = self.selector.currentData()
+        self.password.clear()
+        if datos:
+            self.nombre.setText(datos[2])
+            self.password.setMaxLength(6 if datos[4] and datos[3]!='admin' else 128)
+            self.password.setPlaceholderText('PIN de 6 números' if datos[4] and datos[3]!='admin' else 'Contraseña · Admin o usuario sin PIN')
+            self.password.setInputMethodHints(Qt.InputMethodHint.ImhDigitsOnly if datos[4] and datos[3]!='admin' else Qt.InputMethodHint.ImhNone)
+
+    def cargar_usuarios_acceso(self):
+        from PySide6.QtCore import QSettings
+        self.selector.clear()
+        for fila in self.sesion.usuarios_acceso():
+            self.selector.addItem(f'{fila[1]} · {fila[2]}',fila)
+        ultimo=QSettings('Bakachi12','Menu').value('acceso/ultimo_usuario',0,type=int)
+        for i in range(self.selector.count()):
+            if self.selector.itemData(i)[0]==ultimo:self.selector.setCurrentIndex(i);break
+        self.seleccionar_usuario()
+
     def actualizar_reloj(self):
         ahora = QDateTime.currentDateTime()
         self.reloj.setText(ahora.toString('HH:mm'))
@@ -337,7 +402,7 @@ class DialogoAcceso(FondoEspera):
 
     def exec(self):
         self._resultado = QDialog.DialogCode.Rejected
-        self.nombre.clear()
+        self.cargar_usuarios_acceso()
         self.password.clear()
         self.error.clear()
         contenido = self.ventana.centralWidget()
@@ -353,7 +418,7 @@ class DialogoAcceso(FondoEspera):
         self.show()
         self.ventana.showFullScreen()
         self.raise_()
-        self.nombre.setFocus()
+        self.password.setFocus()
         try:
             self._bucle.exec()
         finally:
@@ -395,11 +460,16 @@ class DialogoAcceso(FondoEspera):
     def validar(self):
         self.entrar.setEnabled(False)
         try:
-            if self.sesion.iniciar(self.nombre.text(), self.password.text()):
+            datos=self.selector.currentData()
+            usar_pin=bool(datos and datos[4] and datos[3]!='admin')
+            valido=self.sesion.iniciar_pin(datos[0],self.password.text()) if usar_pin else self.sesion.iniciar(self.nombre.text(),self.password.text())
+            if valido:
+                from PySide6.QtCore import QSettings
+                QSettings('Bakachi12','Menu').setValue('acceso/ultimo_usuario',self.sesion.usuario['id'])
                 self.password.clear()
                 self.accept()
             else:
-                self.error.setText('Usuario o contraseña incorrectos.')
+                self.error.setText('PIN o contraseña incorrectos. Tras 5 PIN fallidos espera 60 segundos.')
                 self.password.clear()
                 self.password.setFocus()
         except sqlite3.Error:
@@ -418,9 +488,9 @@ class PaginaUsuarios(QWidget):
         layout.setContentsMargins(24, 24, 24, 24)
         layout.setSpacing(12)
         titulo = QLabel('Usuarios y permisos')
-        titulo.setStyleSheet('font-size: 25px; color: #F2C66D;')
+        titulo.setStyleSheet('font-size: 25px; color: #79eaff;')
         layout.addWidget(titulo)
-        descripcion = QLabel('Admin tiene acceso completo. Los usuarios nuevos pueden usar Mesas, Clientes, pedidos y cobros.')
+        descripcion = QLabel('Admin administra; Cajero cobra según su turno; Mesero toma pedidos; Cocinero gestiona cocina. Venta libre mantiene su verificación de inventario.')
         descripcion.setWordWrap(True)
         layout.addWidget(descripcion)
         formulario = QFormLayout()
@@ -441,8 +511,13 @@ class PaginaUsuarios(QWidget):
         formulario.addRow('Usuario para iniciar sesión', self.nombre)
         formulario.addRow('Contraseña', self.password)
         formulario.addRow('Repetir contraseña', self.confirmacion)
+        self.rol = QComboBox()
+        for valor, etiqueta in ROLES.items():
+            self.rol.addItem(etiqueta, valor)
+        self.rol.setCurrentIndex(self.rol.findData('mesas'))
+        formulario.addRow('Rol y permisos', self.rol)
         layout.addLayout(formulario)
-        self.crear = QPushButton('Crear usuario · Mesas y Clientes')
+        self.crear = QPushButton('Crear usuario')
         self.crear.clicked.connect(self.guardar)
         layout.addWidget(self.crear)
         self.mensaje = QLabel('')
@@ -450,9 +525,30 @@ class PaginaUsuarios(QWidget):
         layout.addWidget(self.mensaje)
         self.lista = QListWidget()
         layout.addWidget(self.lista, 1)
-        boton_volver = QPushButton('Volver a Configuración')
-        boton_volver.clicked.connect(volver)
-        layout.addWidget(boton_volver)
+        from acceso_pin import configurar_pin_seleccionado
+        pin=QPushButton('Configurar PIN del usuario seleccionado')
+        pin.clicked.connect(lambda: configurar_pin_seleccionado(self))
+        layout.addWidget(pin)
+        eliminar = QPushButton('Eliminar usuario seleccionado')
+        eliminar.clicked.connect(self.eliminar_seleccionado)
+        layout.addWidget(eliminar)
+
+    def eliminar_seleccionado(self):
+        from dialogos import MensajesIntegrados
+        item = self.lista.currentItem()
+        if item is None:
+            self.mensaje.setText('Selecciona el usuario que quieres eliminar.')
+            return
+        try:
+            self.sesion.exigir_admin()
+            if MensajesIntegrados.question(self.window(), 'Eliminar usuario',
+                    item.text() + '\nSe retirará su acceso y se conservará su historial.') != MensajesIntegrados.StandardButton.Yes:
+                return
+            self.sesion.eliminar(item.data(Qt.ItemDataRole.UserRole))
+            self.actualizar()
+            self.mensaje.setText('Usuario eliminado. Su acceso quedó retirado.')
+        except (ValueError, PermissionError, sqlite3.Error) as error:
+            self.mensaje.setText(str(error))
 
     def limpiar(self):
         self.nombre.clear()
@@ -465,12 +561,11 @@ class PaginaUsuarios(QWidget):
     def actualizar(self):
         self.sesion.exigir_admin()
         self.lista.clear()
-        for nombre, usuario, rol, tipo in self.sesion.listar():
-            acceso = "Venta libre · Sin turno" if tipo == "venta_libre" else "Mesas y Clientes"
-            self.lista.addItem(
-                f'{nombre}  ·  Usuario: {usuario}  ·  '
-                f'{"Acceso completo" if rol == "admin" else acceso}'
-            )
+        for identificador, nombre, usuario, rol, tipo in self.sesion.listar():
+            acceso = ROLES['venta_libre' if tipo == 'venta_libre' else rol]
+            item = QListWidgetItem(f'{nombre} · Usuario: {usuario} · {acceso}')
+            item.setData(Qt.ItemDataRole.UserRole, identificador)
+            self.lista.addItem(item)
 
     def guardar(self):
         self.crear.setEnabled(False)
@@ -479,11 +574,11 @@ class PaginaUsuarios(QWidget):
             if self.password.text() != self.confirmacion.text():
                 raise ValueError('Las contraseñas no coinciden.')
             self.sesion.crear(
-                self.nombre_completo.text(), self.nombre.text(), self.password.text()
+                self.nombre_completo.text(), self.nombre.text(), self.password.text(), self.rol.currentData()
             )
             self.limpiar()
             self.actualizar()
-            self.mensaje.setText('Usuario creado. Tiene permiso para Mesas, Clientes, pedidos y cobros.')
+            self.mensaje.setText('Usuario creado con el rol seleccionado.')
         except (ValueError, PermissionError) as error:
             self.mensaje.setText(str(error))
         except sqlite3.Error:

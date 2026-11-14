@@ -10,7 +10,17 @@ from estilos import FORMULARIOS as ESTILO
 VENTA_RAPIDA = '\x1fventa_rapida'
 
 
+def cuenta_barra(cliente):
+    return f"\x1fbarra:{cliente['id']}:{cliente['nombre']}"
+
+
+def es_barra(clave):
+    return isinstance(clave, str) and clave.startswith('\x1fbarra:')
+
+
 def nombre_operacion(clave):
+    if es_barra(clave):
+        return 'Barra · ' + clave.split(':', 2)[-1]
     return 'Venta rápida' if clave == VENTA_RAPIDA else clave
 
 
@@ -33,6 +43,10 @@ class GestionClientes:
                 id INTEGER PRIMARY KEY, nombre TEXT NOT NULL,
                 clave_nombre TEXT NOT NULL UNIQUE, mesa TEXT
             )''')
+            columnas={fila[1] for fila in db.execute('PRAGMA table_info(clientes)')}
+            for campo,tipo in [('correo',"TEXT NOT NULL DEFAULT ''"),('telefono',"TEXT NOT NULL DEFAULT ''"),('notas',"TEXT NOT NULL DEFAULT ''"),('frecuente','INTEGER NOT NULL DEFAULT 0')]:
+                if campo not in columnas:
+                    db.execute(f'ALTER TABLE clientes ADD COLUMN {campo} {tipo}')
             db.execute('''CREATE TABLE IF NOT EXISTS pedidos_abiertos (
                 mesa TEXT PRIMARY KEY, productos TEXT NOT NULL
             )''')
@@ -40,11 +54,42 @@ class GestionClientes:
     def autorizado(self):
         if self.sesion.usuario is None:
             raise PermissionError('Inicia sesión para gestionar clientes.')
+        if self.sesion.usuario.get('rol') == 'cocinero':
+            raise PermissionError('El rol Cocinero solo puede gestionar cocina.')
 
     def listar(self):
         with self.sesion.conexion() as db:
-            return [dict(id=i, nombre=n, mesa=m) for i, n, m in db.execute(
-                'SELECT id, nombre, mesa FROM clientes ORDER BY nombre COLLATE NOCASE, id')]
+            return [dict(id=i, nombre=n, mesa=m, correo=c, telefono=t, notas=o, frecuente=bool(f)) for i, n, m, c, t, o, f in db.execute(
+                'SELECT id, nombre, mesa, correo, telefono, notas, frecuente FROM clientes ORDER BY nombre COLLATE NOCASE, id')]
+
+    def editar(self, identificador, nombre, correo='', telefono='', notas='', frecuente=False):
+        self.autorizado()
+        nombre=nombre.strip();correo=correo.strip();telefono=telefono.strip();notas=notas.strip()
+        if not nombre or len(nombre)>80 or not nombre.isprintable():
+            raise ValueError('Escribe un nombre válido de hasta 80 caracteres.')
+        if correo and ('@' not in correo or '.' not in correo.rsplit('@',1)[-1] or any(c.isspace() for c in correo)):
+            raise ValueError('Revisa el correo electrónico.')
+        if len(correo)>254 or len(telefono)>80 or len(notas)>2000:
+            raise ValueError('Los datos de contacto o las notas son demasiado largos.')
+        try:
+            with self.sesion.conexion() as db:
+                db.execute('BEGIN IMMEDIATE')
+                fila=db.execute('SELECT nombre,mesa FROM clientes WHERE id=?',(identificador,)).fetchone()
+                if fila is None: raise ValueError('El cliente ya no existe.')
+                anterior=fila[1]
+                destino=cuenta_barra(dict(id=identificador,nombre=nombre)) if es_barra(anterior) else anterior
+                db.execute('UPDATE clientes SET nombre=?,clave_nombre=?,correo=?,telefono=?,notas=?,frecuente=?,mesa=? WHERE id=?',
+                           (nombre,self.sesion.clave(nombre),correo,telefono,notas,int(frecuente),destino,identificador))
+                for mesa,datos in db.execute('SELECT mesa,productos FROM pedidos_abiertos').fetchall():
+                    productos=json.loads(datos)
+                    for producto in productos:
+                        if producto.get('cliente_id')==identificador: producto['cliente_nombre']=nombre
+                    nueva=destino if mesa==anterior and es_barra(anterior) else mesa
+                    db.execute('UPDATE pedidos_abiertos SET mesa=?,productos=? WHERE mesa=?',(nueva,json.dumps(productos,ensure_ascii=False),mesa))
+                if es_barra(anterior) and anterior!=destino:
+                    db.execute('UPDATE ordenes_cocina SET mesa=? WHERE mesa=?',(nombre_operacion(destino),nombre_operacion(anterior)))
+        except sqlite3.IntegrityError as error:
+            raise ValueError('Ya existe otro cliente con ese nombre.') from error
 
     def de_mesa(self, mesa):
         return [cliente for cliente in self.listar() if cliente['mesa'] == mesa]
@@ -53,6 +98,12 @@ class GestionClientes:
         return next((c for c in self.listar() if c['id'] == identificador), None)
 
     def validar_mesa(self, db, mesa):
+        if es_barra(mesa):
+            cliente = next((dict(id=i, nombre=n) for i,n in db.execute('SELECT id,nombre FROM clientes')
+                            if cuenta_barra(dict(id=i,nombre=n)) == mesa), None)
+            if cliente is None:
+                raise ValueError('La cuenta de barra no corresponde a un cliente registrado.')
+            return
         if mesa is not None and not db.execute(
                 'SELECT 1 FROM mesas_configuracion WHERE nombre = ?', (mesa,)).fetchone():
             raise ValueError('Selecciona una mesa disponible en el restaurante.')
@@ -71,8 +122,20 @@ class GestionClientes:
         except sqlite3.IntegrityError as error:
             raise ValueError('Ese cliente ya está registrado. Selecciónalo en la lista de clientes existentes.') from error
 
+    def asignar_barra(self, identificador):
+        cliente = self.obtener(identificador)
+        if cliente is None:
+            raise ValueError('El cliente ya no está disponible.')
+        destino = cuenta_barra(cliente)
+        self.asignar(identificador, destino)
+        return destino
+
     def asignar(self, identificador, mesa):
         self.autorizado()
+        if es_barra(mesa):
+            cliente = self.obtener(identificador)
+            if cliente is None or cuenta_barra(cliente) != mesa:
+                raise ValueError('Cada cliente de barra debe tener su propia cuenta.')
         with self.sesion.conexion() as db:
             db.execute('BEGIN IMMEDIATE')
             self.validar_mesa(db, mesa)
@@ -101,6 +164,8 @@ class GestionClientes:
                 raise ValueError('La venta rápida no admite clientes de una mesa.')
             for producto in productos:
                 cliente = producto.get('cliente_id')
+                if es_barra(mesa) and (cliente is None or cuenta_barra(self.obtener(cliente) or dict(id=0,nombre='')) != mesa):
+                    raise ValueError('La cuenta de barra solo admite consumos de su cliente.')
                 if cliente is not None and not db.execute(
                         'SELECT 1 FROM clientes WHERE id = ? AND mesa = ?', (cliente, mesa)).fetchone():
                     raise ValueError('El cliente seleccionado ya no está asignado a esta mesa.')
@@ -114,18 +179,21 @@ class GestionClientes:
 
 
 class PaginaClientes(QWidget):
-    def __init__(self, gestion, pedidos, al_abrir, al_agregar):
+    def __init__(self, gestion, pedidos, al_abrir, al_agregar, al_barra=None, al_mesa=None, al_editar=None):
         super().__init__()
         self.gestion = gestion
         self.pedidos = pedidos
         self.al_abrir = al_abrir
+        self.al_barra = al_barra
+        self.al_mesa = al_mesa
+        self.al_editar = al_editar
         self.setObjectName('PaginaClientes')
         self.setStyleSheet(ESTILO + '''
             QLineEdit { font-size: 18px; }
-            QListWidget { background: rgba(11, 21, 37, 190); color: #F4F2ED; border: 1px solid #29374C;
+            QListWidget { background: rgba(11, 21, 37, 190); color: #eaf3ff; border: 1px solid #29374C;
                 border-radius: 12px; font-size: 18px; padding: 6px; }
             QListWidget::item { padding: 12px 16px; border-bottom: 1px solid #243147; border-radius: 8px; }
-            QListWidget::item:selected { background: #293A52; color: #F2C66D; }
+            QListWidget::item:selected { background: #293A52; color: #79eaff; }
             QListWidget::item:hover { background: #1B2A40; }
         ''')
         layout = QVBoxLayout(self)
@@ -164,12 +232,35 @@ class PaginaClientes(QWidget):
         for cliente in self.gestion.listar():
             total = sum(centimos(p) for p in self.pedidos.get(cliente['mesa'], [])
                         if p.get('cliente_id') == cliente['id'])
-            detalle = f"{cliente['mesa']}  ·  B/.{total / 100:.2f}" if cliente['mesa'] else 'Toca para elegir mesa'
+            detalle = f"{nombre_operacion(cliente['mesa'])}  ·  B/.{total / 100:.2f}" if cliente['mesa'] else 'Elige Barra o Añadir a mesa'
             item = QListWidgetItem(f"{cliente['nombre']}\n{detalle}")
             item.setData(Qt.ItemDataRole.UserRole, cliente['id'])
-            item.setData(Qt.ItemDataRole.UserRole + 1, f"{cliente['nombre']} {cliente['mesa'] or ''}".casefold())
+            item.setData(Qt.ItemDataRole.UserRole + 1, f"{cliente['nombre']} {cliente['mesa'] or ''} {cliente.get('correo','')} {cliente.get('telefono','')}".casefold())
             item.setSizeHint(QSize(0, 92))
             self.lista.addItem(item)
+            if self.al_barra is not None and self.al_mesa is not None:
+                item.setText("")
+                fila = QWidget()
+                caja = QHBoxLayout(fila)
+                texto = QLabel(f"{cliente['nombre']}\n{detalle}")
+                if cliente.get("frecuente"):
+                    texto.setText("★ " + texto.text() + " · Cliente frecuente")
+                texto.setTextFormat(Qt.TextFormat.PlainText)
+                texto.setWordWrap(True)
+                caja.addWidget(texto, 1)
+                barra = QPushButton('Barra · Cuenta individual')
+                mesa = QPushButton('Añadir a mesa')
+                for boton in (barra, mesa):
+                    boton.setMinimumHeight(54)
+                    caja.addWidget(boton)
+                barra.clicked.connect(lambda checked=False, i=cliente['id']: self.al_barra(i))
+                mesa.clicked.connect(lambda checked=False, i=cliente['id']: self.al_mesa(i))
+                if self.al_editar is not None:
+                    editar=QPushButton('Editar')
+                    editar.setMinimumHeight(54)
+                    caja.addWidget(editar)
+                    editar.clicked.connect(lambda checked=False,i=cliente['id']:self.al_editar(i))
+                self.lista.setItemWidget(item, fila)
         self.filtrar()
 
     def abrir_item(self, item):

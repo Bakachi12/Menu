@@ -21,8 +21,8 @@
   </property>
   <property name="styleSheet">
    <string notr="true">QMainWindow, QWidget#centralwidget {
-    background-color: #101c1b;
-    color: #F4F2ED;
+    background-color: #0b1425;
+    color: #eaf3ff;
 }</string>
   </property>
   <widget class="QWidget" name="centralwidget">
@@ -71,8 +71,8 @@ QFrame#PanelLateral QPushButton:hover {
 
 QFrame#PanelLateral QPushButton:checked {
     background-color: #314941;
-    color: #FFE0A0;
-    border: 2px solid #D6AE62;
+    color: #8cefff;
+    border: 2px solid #20d9f5;
 }
 QFrame#PanelLateral QPushButton#btnCerrarSesion {
     background-color: #382B35;
@@ -200,7 +200,7 @@ QFrame#PanelLateral QPushButton#btnCerrarSesion:hover {
         <property name="styleSheet">
          <string notr="true">
 QFrame#PanelPrincipal {
-    background-color: rgba(16, 23, 37, 205);
+    background-color: rgba(16, 23, 37, 75);
     border: 1px solid rgba(32, 42, 58, 220);
     border-radius: 12px;
 }
@@ -237,7 +237,7 @@ QLabel {
              <property name="styleSheet">
               <string notr="true">
 QPushButton {
-    background-color: #414154;
+    background-color: #163653;
     color: white;
     border: none;
     border-radius: 8px;
@@ -246,7 +246,7 @@ QPushButton {
 }
 
 QPushButton:hover {
-    background-color: #D4AF37;
+    background-color: #20d9f5;
     color: black;
 }
 </string>
@@ -261,7 +261,7 @@ QPushButton:hover {
              <property name="styleSheet">
               <string notr="true">
 QPushButton {
-    background-color: #414154;
+    background-color: #163653;
     color: white;
     border: none;
     border-radius: 8px;
@@ -270,7 +270,7 @@ QPushButton {
 }
 
 QPushButton:hover {
-    background-color: #D4AF37;
+    background-color: #20d9f5;
     color: black;
 }
 </string>
@@ -285,7 +285,7 @@ QPushButton:hover {
              <property name="styleSheet">
               <string notr="true">
 QPushButton {
-    background-color: #414154;
+    background-color: #163653;
     color: white;
     border: none;
     border-radius: 8px;
@@ -294,7 +294,7 @@ QPushButton {
 }
 
 QPushButton:hover {
-    background-color: #D4AF37;
+    background-color: #20d9f5;
     color: black;
 }
 </string>
@@ -353,19 +353,19 @@ QPushButton:hover {
              </property>
              <property name="styleSheet">
               <string notr="true">QTableWidget {
-    background-color: #292938;
+    background-color: #10253d;
     alternate-background-color: #343446;
     color: white;
     border: none;
-    gridline-color: #414154;
+    gridline-color: #163653;
     font-size: 14px;
-    selection-background-color: #D4AF37;
-    selection-color: #20202B;
+    selection-background-color: #20d9f5;
+    selection-color: #0d192d;
 }
 
 QHeaderView::section {
-    background-color: #414154;
-    color: #D4AF37;
+    background-color: #163653;
+    color: #20d9f5;
     padding: 10px;
     border: none;
     font-weight: bold;
@@ -441,16 +441,16 @@ QTableWidget::item {
              </property>
              <property name="styleSheet">
               <string notr="true">QLineEdit {
-    background-color: #414154;
+    background-color: #163653;
     color: white;
-    border: 1px solid #55556A;
+    border: 1px solid #2983a3;
     border-radius: 8px;
     padding: 10px;
     font-size: 15px;
 }
 
 QLineEdit:focus {
-    border: 2px solid #D4AF37;
+    border: 2px solid #20d9f5;
 }</string>
              </property>
              <property name="placeholderText">
@@ -480,15 +480,15 @@ QLineEdit:focus {
                 </property>
                 <property name="styleSheet">
                  <string notr="true">QComboBox {
-    background-color: #414154;
+    background-color: #163653;
     color: #FFFFFF;
-    border: 1px solid #55556A;
+    border: 1px solid #2983a3;
     border-radius: 9px;
     padding: 8px 10px;
     font-size: 14px;
 }
 QComboBox:hover {
-    border-color: #D4AF37;
+    border-color: #20d9f5;
 }
 QComboBox::drop-down {
     width: 0px;
@@ -500,10 +500,10 @@ QComboBox::down-arrow {
     height: 0px;
 }
 QComboBox QAbstractItemView {
-    background-color: #292938;
+    background-color: #10253d;
     color: white;
-    selection-background-color: #D4AF37;
-    selection-color: #20202B;
+    selection-background-color: #20d9f5;
+    selection-color: #0d192d;
 }</string>
                 </property>
                </widget>
@@ -518,21 +518,21 @@ QComboBox QAbstractItemView {
                 </property>
                 <property name="styleSheet">
                  <string notr="true">QComboBox {
-    background-color: #414154;
+    background-color: #163653;
     color: #FFFFFF;
-    border: 1px solid #55556A;
+    border: 1px solid #2983a3;
     border-radius: 9px;
     padding: 8px 10px;
     font-size: 14px;
 }
-QComboBox:hover { border-color: #D4AF37; }
+QComboBox:hover { border-color: #20d9f5; }
 QComboBox::drop-down { width: 0px; border: none; }
 QComboBox::down-arrow { image: none; width: 0px; height: 0px; }
 QComboBox QAbstractItemView {
-    background-color: #292938;
+    background-color: #10253d;
     color: white;
-    selection-background-color: #D4AF37;
-    selection-color: #20202B;
+    selection-background-color: #20d9f5;
+    selection-color: #0d192d;
 }</string>
                 </property>
                </widget>
@@ -550,9 +550,9 @@ QComboBox QAbstractItemView {
                 </property>
                 <property name="styleSheet">
                  <string notr="true">QPushButton {
-    background-color: #414154;
+    background-color: #163653;
     color: #FFFFFF;
-    border: 1px solid #55556A;
+    border: 1px solid #2983a3;
     border-radius: 9px;
     padding: 10px 18px;
     font-size: 15px;
@@ -560,18 +560,18 @@ QComboBox QAbstractItemView {
 }
 
 QPushButton:hover {
-    background-color: #55556A;
-    border: 1px solid #D4AF37;
+    background-color: #2983a3;
+    border: 1px solid #20d9f5;
 }
 
 QPushButton:pressed {
-    background-color: #D4AF37;
-    color: #20202B;
+    background-color: #20d9f5;
+    color: #0d192d;
 }
 
 QPushButton:checked {
-    background-color: #D4AF37;
-    color: #20202B;
+    background-color: #20d9f5;
+    color: #0d192d;
     border: 1px solid #E5C45A;
 }</string>
                 </property>
@@ -599,9 +599,9 @@ QPushButton:checked {
                 </property>
                 <property name="styleSheet">
                  <string notr="true">QPushButton {
-    background-color: #414154;
+    background-color: #163653;
     color: #FFFFFF;
-    border: 1px solid #55556A;
+    border: 1px solid #2983a3;
     border-radius: 9px;
     padding: 10px 18px;
     font-size: 15px;
@@ -609,18 +609,18 @@ QPushButton:checked {
 }
 
 QPushButton:hover {
-    background-color: #55556A;
-    border: 1px solid #D4AF37;
+    background-color: #2983a3;
+    border: 1px solid #20d9f5;
 }
 
 QPushButton:pressed {
-    background-color: #D4AF37;
-    color: #20202B;
+    background-color: #20d9f5;
+    color: #0d192d;
 }
 
 QPushButton:checked {
-    background-color: #D4AF37;
-    color: #20202B;
+    background-color: #20d9f5;
+    color: #0d192d;
     border: 1px solid #E5C45A;
 }</string>
                 </property>
@@ -641,7 +641,7 @@ QPushButton:checked {
            <widget class="QWidget" name="PaginaPedido">
             <property name="styleSheet">
              <string notr="true">QWidget#PaginaPedido {
-    background-color: rgba(14, 28, 24, 225);
+    background-color: rgba(14, 28, 24, 20);
 }</string>
             </property>
            </widget>

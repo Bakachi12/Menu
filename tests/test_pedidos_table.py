@@ -161,6 +161,75 @@ class TestPedidosTable(unittest.TestCase):
             self.servicio.resolver(id_, True, self.sesion, self.turnos)
         self.assertEqual(self.servicio.resumen()['mesas'][0]['cuenta'], [])
 
+    def preparar_platos(self):
+        with self.servicio.conexion() as db:
+            db.execute("ALTER TABLE productos ADD COLUMN seccion TEXT NOT NULL DEFAULT 'Bebidas'")
+            db.execute("ALTER TABLE productos ADD COLUMN preparaciones TEXT NOT NULL DEFAULT ''")
+            db.execute("INSERT INTO productos VALUES(3,'Hamburguesa','Comidas',650,1,NULL,'Cocina','')")
+            db.execute("INSERT INTO productos VALUES(4,'Yuca','Guarniciones',250,1,NULL,'Acompañamiento','')")
+            db.execute("INSERT INTO recargos_acompanamiento VALUES('Yuca',125)")
+        return dict(preparacion='Sin vegetales', acompanamiento='Yuca', extra='Yuca')
+
+    def test_personalizacion_llega_a_caja_y_cocina_sin_duplicar(self):
+        seleccion = self.preparar_platos()
+        datos = self.datos(lineas=[dict(producto_id=3, cantidad=2, seleccion=seleccion, precio=0.01)])
+        identificador = self.servicio.enviar(datos)['id']
+        self.servicio.enviar(datos)
+        productos = json.loads(self.servicio.listar()[0]['productos'])
+        self.assertEqual([p['precio'] for p in productos], [7.75, 7.75])
+        self.assertEqual(len({p['unidad_cocina'] for p in productos}), 2)
+        with self.servicio.conexion() as db:
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM ordenes_cocina').fetchone()[0], 0)
+        _, cuenta = self.servicio.resolver(identificador, True, self.sesion, self.turnos)
+        self.assertEqual(cuenta[0]['preparacion'], 'Sin vegetales')
+        self.assertEqual(cuenta[0]['recargo_centimos'], 125)
+        with self.servicio.conexion() as db:
+            filas = db.execute('SELECT preparacion,acompanamiento,extra FROM ordenes_cocina').fetchall()
+            self.assertEqual([tuple(f) for f in filas], [('Sin vegetales', 'Yuca', 'Yuca')] * 2)
+        with self.assertRaises(ValueError):
+            self.servicio.resolver(identificador, True, self.sesion, self.turnos)
+
+    def test_platos_rechazan_opciones_falsas_y_cambios_de_recargo(self):
+        seleccion = self.preparar_platos()
+        for invalida in (None, dict(seleccion, preparacion='Inventada'), dict(seleccion, acompanamiento='Inexistente'), dict(seleccion, extra='Papas')):
+            with self.subTest(invalida=invalida), self.assertRaises(ValueError):
+                self.servicio.enviar(self.datos(lineas=[dict(producto_id=3, cantidad=1, seleccion=invalida)]))
+        identificador = self.servicio.enviar(self.datos(lineas=[dict(producto_id=3, cantidad=1, seleccion=seleccion)]))['id']
+        with self.servicio.conexion() as db:
+            db.execute("UPDATE recargos_acompanamiento SET centimos=150 WHERE nombre='Yuca'")
+        with self.assertRaises(ValueError):
+            self.servicio.resolver(identificador, True, self.sesion, self.turnos)
+        self.assertEqual(self.servicio.estado(identificador)['estado'], 'pendiente')
+        with self.servicio.conexion() as db:
+            db.execute('INSERT INTO platos_agotados VALUES(3)')
+        self.assertFalse(next(p for p in self.servicio.resumen()['productos'] if p['id'] == 3)['disponible'])
+        with self.assertRaises(ValueError):
+            self.servicio.enviar(self.datos(lineas=[dict(producto_id=3, cantidad=1, seleccion=seleccion)]))
+
+    def test_vincular_antes_de_login_y_revocar(self):
+        servidor = ServidorTable(self.servicio, lambda u, p: None)
+        puerto = servidor.iniciar(host='127.0.0.1', puerto=0)
+        self.addCleanup(servidor.detener)
+        url = f'http://127.0.0.1:{puerto}'
+        def consultar(clave, ruta='/api/vinculo'):
+            return urlopen(Request(url + ruta, headers={'Authorization': 'Bearer ' + clave}))
+        with self.assertRaises(HTTPError) as error:
+            consultar('incorrecta')
+        self.assertTrue(json.load(error.exception)['vinculo_invalido'])
+        cocina = self.servicio.vincular('Cocina', 'cocina')
+        with self.assertRaises(HTTPError):
+            consultar(cocina)
+        clave = self.servicio.vincular('Tablet')
+        with consultar(clave) as respuesta:
+            self.assertEqual(json.load(respuesta), {'vinculado': True})
+        with self.assertRaises(HTTPError):
+            consultar(clave, '/api/resumen')
+        self.servicio.revocar(self.servicio.terminal(clave)[0])
+        with self.assertRaises(HTTPError) as error:
+            consultar(clave)
+        self.assertEqual(error.exception.code, 401)
+        self.assertTrue(json.load(error.exception)['vinculo_invalido'])
+
     def test_http_autenticacion_envio_estado_y_rotacion(self):
         servidor = ServidorTable(self.servicio, lambda u, p: dict(id=4, usuario=u) if (u,p)==('ana','prueba') else None)
         puerto = servidor.iniciar(host='127.0.0.1', puerto=0)
@@ -168,6 +237,9 @@ class TestPedidosTable(unittest.TestCase):
         url = f'http://127.0.0.1:{puerto}'
         with urlopen(url) as r:
             self.assertIn(b'PedidosTable', r.read())
+        with urlopen(url + '/fondo_bar.png') as r:
+            self.assertEqual(r.headers['Content-Type'], 'image/png')
+            self.assertEqual(r.read(8), b'\x89PNG\r\n\x1a\n')
         with self.assertRaises(HTTPError) as error:
             urlopen(url + '/api/resumen')
         self.assertEqual(error.exception.code, 401)

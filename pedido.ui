@@ -21,32 +21,32 @@
   </property>
   <property name="styleSheet">
    <string notr="true">QWidget#Form {
-     background-color: rgba(14, 28, 24, 225);
-    color: #F4F2ED;
+     background-color: transparent;
+    color: #eaf3ff;
 }
 
 QFrame#PanelProductos, QFrame#PanelCuenta {
-    background-color: rgba(22, 40, 34, 244);
+    background-color: rgba(11, 20, 37, 205);
     border: 1px solid #273247;
     border-radius: 12px;
 }
 
 QPushButton {
-    background-color: #233b36;
+    background-color: #11283f;
     color: #E9E8E3;
-    border: 1px solid #3c554d;
+    border: 1px solid #24647d;
     border-radius: 10px;
     padding: 11px 14px;
     font-size: 15px;
     font-weight: 600;
 }
 
-QPushButton:checked { background-color: #D6AE62; color: #132320; }
+QPushButton:checked { background-color: #23d7f4; color: #0b1425; }
 
 QPushButton:hover {
-    background-color: #345249;
-    color: #F2C66D;
-    border: 1px solid #D6A74C;
+    background-color: #164263;
+    color: #85eaff;
+    border: 1px solid #ec48c4;
 }
 
 QSplitter::handle {
@@ -69,7 +69,7 @@ QSplitter::handle {
       </property>
       <property name="styleSheet">
          <string notr="true">QFrame#PanelProductos {
-     background-color: rgba(22, 40, 34, 244);
+     background-color: rgba(11, 20, 37, 205);
      border: 1px solid #273247;
      border-radius: 12px;
 }</string>
@@ -143,7 +143,7 @@ QSplitter::handle {
      <widget class="QFrame" name="PanelCuenta">
       <property name="styleSheet">
          <string notr="true">QFrame#PanelCuenta {
-              background-color: rgba(22, 40, 34, 244);
+              background-color: rgba(11, 20, 37, 205);
      border: 1px solid #273247;
      border-radius: 12px;
 }</string>
@@ -188,7 +188,7 @@ QSplitter::handle {
          <property name="styleSheet">
             <string notr="true">QListWidget {
         background-color: #0C1320;
-        color: #F4F2ED;
+        color: #eaf3ff;
         border: 1px solid #2A3549;
     border-radius: 10px;
     padding: 8px;
@@ -214,7 +214,7 @@ QListWidget::item:selected {
         <widget class="QLabel" name="lblTotal">
          <property name="styleSheet">
           <string notr="true">QLabel {
-    color: #D4AF37;
+    color: #25d6f4;
     font-size: 22px;
     font-weight: bold;
     padding: 12px;

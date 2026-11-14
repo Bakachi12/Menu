@@ -25,11 +25,17 @@ if getattr(sys, "frozen", False):
             except OSError:
                 pass
 
+# Comprobación del EXE sin abrir ni modificar la base del negocio.
+if '--comprobar-arranque' in sys.argv:
+    from comprobar_arranque import comprobar
+    indice = sys.argv.index('--comprobar-arranque')
+    raise SystemExit(comprobar(sys.argv[indice + 1]))
+
 from datos import cantidades_cocina_hoy, preparar_archivo_datos, inicializar_catalogo, cargar_productos as leer_productos, registrar_venta, historial_cobros, METODOS_PAGO
 from inventario import (
     GestionTurnos, PaginaHojaInventarios, PaginaHorarioTurnos, PaginaInventario,
 )
-from cocina import BEBIDAS, COCINA, SECCIONES, acompanamientos, seccion_inicial
+from cocina import BEBIDAS, COCINA, ACOMPANAMIENTO, SECCIONES, acompanamientos, seccion_inicial
 from vista_pedidos import personalizar_plato, cargar_pantalla, dibujar_cuenta, dibujar_productos
 from estilos import HISTORIAL, CONFIGURACION, CATALOGO, TEMA
 
@@ -45,7 +51,7 @@ if comprobar_e_instalar():
 from PySide6.QtWidgets import QComboBox, QHeaderView, QTableWidget, QTableWidgetItem
 from PySide6.QtWidgets import QFrame, QApplication, QGridLayout, QVBoxLayout, QStackedWidget, QPushButton, QSizePolicy, QLineEdit, QWidget, QLabel, QScrollArea, QListWidget, QHBoxLayout, QListWidgetItem
 
-from PySide6.QtWidgets import QMessageBox
+from dialogos import MensajesIntegrados as QMessageBox
 from PySide6.QtCore import Qt, QRegularExpression, QSettings, QTimer
 from PySide6.QtGui import QIntValidator, QRegularExpressionValidator
 app = QApplication(sys.argv)
@@ -71,6 +77,7 @@ except (OSError, sqlite3.Error, RuntimeError) as error:
 # Cuentas persistentes; se crea Admin/Admin solo en la primera instalación.
 from usuarios import SesionUsuarios, DialogoAcceso, PaginaUsuarios
 from PySide6.QtWidgets import QDialog
+from dialogos import DialogoIntegrado
 try:
     sesion = SesionUsuarios(ruta_base_datos)
 except sqlite3.Error as error:
@@ -124,7 +131,7 @@ def restaurar_sesion_guardada():
     return True
 
 try:
-    sesion_restaurada = restaurar_sesion_guardada()
+    sesion_restaurada = False  # Recordar usuario, pero exigir PIN o contraseña al abrir.
 except sqlite3.Error as error:
     QMessageBox.critical(
         None, "Sesión", f"No se pudo restaurar la última sesión: {error}"
@@ -420,7 +427,7 @@ btn_menu_historial.clicked.connect(abrir_historial)
 # Guardar los pedidos por mesa
 ventanas_pedido = {}
 pedidos = {}
-from clientes import GestionClientes, PaginaClientes, centimos, clave_producto, VENTA_RAPIDA, nombre_operacion
+from clientes import GestionClientes, PaginaClientes, centimos, clave_producto, VENTA_RAPIDA, nombre_operacion, cuenta_barra, es_barra
 try:
     gestion_clientes = GestionClientes(sesion)
     pedidos.update(gestion_clientes.cargar_pedidos())
@@ -463,7 +470,8 @@ def avisar_pedido(nombre_mesa, texto):
 def guardar_cuenta_abierta(nombre_mesa, cuenta, lista_pedido, lbl_total):
     """Guarda primero en disco; solo si funciona actualiza el pedido visible."""
     try:
-        gestion_turnos.exigir_acceso_venta()
+        if not (sesion.usuario and sesion.usuario.get('rol') == 'mesero'):
+            gestion_turnos.exigir_acceso_venta()
         gestion_clientes.guardar_pedido(nombre_mesa, cuenta)
     except (ValueError, PermissionError, sqlite3.Error) as error:
         avisar_pedido(nombre_mesa, f'No se guardó el cambio: {error}')
@@ -557,7 +565,7 @@ def actualizar_clientes_pedido(nombre_mesa):
 
 def ver_orden_detallada(mesa, pantalla):
     from estilos import FORMULARIOS
-    detalle = QDialog(pantalla)
+    detalle = DialogoIntegrado(pantalla)
     detalle.setWindowTitle(f"Orden detallada · {nombre_operacion(mesa)}")
     detalle.setStyleSheet(FORMULARIOS)
     detalle.resize(min(620, ventana.width()), min(640, ventana.height()))
@@ -676,7 +684,7 @@ def finalizar_cobro(nombre_mesa, metodo_pago, estado):
     nombres_mesas.pop(nombre_mesa, None)
 
     # Restaurar el nombre original de la mesa
-    if nombre_mesa != VENTA_RAPIDA:
+    if nombre_mesa in mesas:
         indice = mesas.index(nombre_mesa)
         botones_mesas[indice].setText(nombre_mesa)
 
@@ -690,13 +698,10 @@ def finalizar_cobro(nombre_mesa, metodo_pago, estado):
     clientes_activos.pop(nombre_mesa, None)
     actualizar_clientes_pedido(nombre_mesa)
 
-    # Regresar a la pantalla de mesas
-    if nombre_mesa == VENTA_RAPIDA:
-        abrir_inicio()
-    else:
-        paginas.setCurrentWidget(pagina_mesas)
-    titulo_pagina.setText(f"Cobro registrado · {metodo_pago}")
+    # Actualizar el estado antes de regresar al origen de la cuenta.
     filtrar_mesas(filtro_mesas_actual)
+    titulo_pagina.setText(f"Cobro registrado · {metodo_pago}")
+    destino_regreso_pedido()
 
 
 def cargar_historial():
@@ -747,6 +752,8 @@ def actualizar_anios_historial(ventas):
     cmb_anio_historial.blockSignals(bloquear_senales)
 
 def cobrar_mesa(nombre_mesa):
+    if sesion.usuario and sesion.usuario.get('rol') in ('mesero','cocinero'):
+        return
 
     dialogo = cargar_ui("confirmar_cobro.ui")
 
@@ -853,14 +860,16 @@ def mostrar_menu_mesa(mesa, pantalla):
                       lambda producto: agregar_producto(mesa, producto, lista, total), agotados)
 
 
-def abrir_pedido(nombre_mesa):
+def abrir_pedido(nombre_mesa, regreso=None):
     """Reutiliza la pantalla de cada mesa para conservar su estado."""
     global destino_regreso_pedido, titulo_regreso_pedido
-    if nombre_mesa == VENTA_RAPIDA:
+    if regreso is not None:
+        destino_regreso_pedido, titulo_regreso_pedido = regreso
+    elif nombre_mesa == VENTA_RAPIDA:
         destino_regreso_pedido, titulo_regreso_pedido = abrir_inicio, 'Inicio'
     elif paginas.currentWidget() == pagina_clientes:
         destino_regreso_pedido, titulo_regreso_pedido = abrir_clientes, 'Clientes'
-    else:
+    elif paginas.currentWidget() != pagina_pedido:
         destino_regreso_pedido, titulo_regreso_pedido = abrir_mesas, 'Mesas'
     titulo_pagina.setText(nombre_operacion(nombre_mesa) if nombre_mesa == VENTA_RAPIDA
                           else f"Pedidos · {nombre_mesa}")
@@ -874,6 +883,14 @@ def abrir_pedido(nombre_mesa):
         return
 
     pantalla_pedido = cargar_ui("pedido.ui")
+    from PySide6.QtWidgets import QSplitter
+    divisor = pantalla_pedido.findChild(QSplitter, "splitter")
+    if divisor is not None:
+        divisor.setChildrenCollapsible(False)
+        divisor.setStretchFactor(0, 3)
+        divisor.setStretchFactor(1, 1)
+        divisor.widget(1).setMinimumWidth(320)
+        divisor.setSizes([1200, 400])
     pantalla_pedido.setWindowTitle(f"Pedido - {nombre_operacion(nombre_mesa)}")
 
     etiqueta = (
@@ -889,7 +906,7 @@ def abrir_pedido(nombre_mesa):
     )
 
     if btn_editar_nombre is not None:
-        btn_editar_nombre.setVisible(nombre_mesa != VENTA_RAPIDA)
+        btn_editar_nombre.setVisible(nombre_mesa != VENTA_RAPIDA and not es_barra(nombre_mesa))
         btn_editar_nombre.clicked.connect(
             lambda checked=False: editar_nombre_desde_pedido(nombre_mesa)
         )
@@ -899,6 +916,7 @@ def abrir_pedido(nombre_mesa):
     )
 
     if btn_cobrar is not None:
+        btn_cobrar.setVisible(not (sesion.usuario and sesion.usuario.get('rol') == 'mesero'))
         if nombre_mesa == VENTA_RAPIDA:
             btn_cobrar.setText('Cobrar venta rápida')
         btn_cobrar.clicked.connect(
@@ -1191,7 +1209,9 @@ def filtrar_mesas(filtro):
 
         alias = nombres_mesas.get(nombre_mesa)
         estado = "Ocupada" if ocupada else "Libre"
-        boton.setText("\n".join(filter(None, (nombre_mesa, alias, estado))))
+        total_mesa=sum(centimos(p) for p in pedidos.get(nombre_mesa, []))
+        importe=f"Cuenta: B/.{total_mesa/100:.2f}" if ocupada else None
+        boton.setText("\n".join(filter(None, (nombre_mesa, alias, estado, importe))))
         if boton.property("ocupada") != ocupada:
             boton.setProperty("ocupada", ocupada)
             boton.style().unpolish(boton)
@@ -1272,8 +1292,9 @@ txt_nombre_producto = QLineEdit()
 txt_precio_producto = QLineEdit()
 txt_precio_producto.setPlaceholderText("Ejemplo: 2.50")
 
-txt_categoria_producto = QLineEdit()
-txt_categoria_producto.setPlaceholderText("Bebidas, Cocina o Acompañamiento")
+from catalogo_controles import SelectorCategoria, pertenece_menu, ESTILO_SELECTORES
+txt_categoria_producto = SelectorCategoria()
+menu_catalogo_actual = BEBIDAS
 
 btn_guardar_producto = QPushButton("Guardar")
 
@@ -1283,8 +1304,8 @@ btn_abrir_productos.clicked.connect(
     lambda: abrir_seccion_admin(pagina_productos)
 )
 mensaje_producto = QLabel("")
-mensaje_producto.setStyleSheet("color: #8ED6A0; font-size: 16px;")
-from PySide6.QtWidgets import QFileDialog
+mensaje_producto.setStyleSheet("color: #54e3b7; font-size: 16px;")
+from dialogos import ArchivosIntegrados as QFileDialog
 from PySide6.QtGui import QPixmap
 
 ruta_imagen_elegida = None
@@ -1410,11 +1431,12 @@ def guardar_producto():
             conexion.execute(
                 """
                 INSERT INTO productos (
-                    nombre, precio_centimos, categoria, imagen, seccion
+                    nombre, precio_centimos, categoria, imagen, seccion, lleva_acompanamiento
                 )
-                VALUES (?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (nombre, centimos, categoria, imagen_guardada, seccion_inicial(nombre, categoria))
+                (nombre, centimos, categoria, imagen_guardada, seccion_inicial(nombre, categoria),
+                 int(nombre.strip().casefold() not in ('salchipapa', 'salchipapas')))
             )
 
     except sqlite3.IntegrityError:
@@ -1455,15 +1477,18 @@ def actualizar_lista_catalogo():
 
     with sesion.conexion() as conexion:
         filas = conexion.execute("""
-            SELECT id, nombre, precio_centimos, categoria
+            SELECT id, nombre, precio_centimos, categoria, seccion
             FROM productos
             WHERE activo = 1
             ORDER BY nombre COLLATE NOCASE, categoria
         """).fetchall()
 
-    for identificador, nombre, centimos, categoria in filas:
+    for identificador, nombre, centimos, categoria, seccion in filas:
+        seccion = seccion or seccion_inicial(nombre, categoria)
+        if not pertenece_menu(seccion, menu_catalogo_actual):
+            continue
         elemento = QListWidgetItem(
-            f"{nombre} · B/.{centimos / 100:.2f} · {categoria}"
+            f"{nombre}     B/.{centimos / 100:.2f}\n{'Bar' if seccion == BEBIDAS else seccion}"
         )
         elemento.setData(Qt.ItemDataRole.UserRole, identificador)
         lista_catalogo.addItem(elemento)
@@ -1515,30 +1540,50 @@ def configurar_menu_producto():
         actualizar_lista_catalogo()
         return
     from estilos import FORMULARIOS
-    dialogo = QDialog(ventana)
+    dialogo = DialogoIntegrado(ventana)
     dialogo.setStyleSheet(FORMULARIOS)
-    dialogo.setWindowTitle(producto['nombre'])
+    dialogo.setWindowTitle("Configurar: " + producto['nombre'])
     layout = QVBoxLayout(dialogo)
-    layout.addWidget(QLabel("Mostrar en"))
+    dialogo.setProperty("compacto", True)
+    layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+    layout.setSpacing(10)
+    layout.addWidget(QLabel("Menú actual (se conserva)"))
     seccion = QComboBox()
     seccion.addItems(SECCIONES)
     seccion.setCurrentText(producto['seccion'])
+    seccion.setEnabled(False)
+    seccion.setToolTip("Se conserva el menú actual del producto.")
     layout.addWidget(seccion)
-    layout.addWidget(QLabel("Preparaciones separadas por comas"))
-    variantes = QLineEdit(producto['preparaciones'])
-    variantes.setPlaceholderText("Ejemplo: Al ajillo, Fritos, En salsa roja")
+    from PySide6.QtWidgets import QCheckBox, QSpinBox
+    lleva = QCheckBox("Este plato lleva acompañamiento")
+    lleva.setChecked(producto.get('lleva_acompanamiento', True))
+    lleva.setEnabled(producto['seccion'] == COCINA)
+    layout.addWidget(lleva)
+    layout.addWidget(QLabel("¿Cuántos acompañamientos incluye como máximo?"))
+    cantidad_lados = QSpinBox()
+    cantidad_lados.setRange(1, 20)
+    cantidad_lados.setValue(producto.get('cantidad_acompanamientos', 1))
+    cantidad_lados.setEnabled(lleva.isChecked() and producto['seccion'] == COCINA)
+    lleva.toggled.connect(cantidad_lados.setEnabled)
+    layout.addWidget(cantidad_lados)
+    indicacion = QLabel("Desmárcalo para platos como salchipapa. El pedido omitirá el paso de acompañamiento.")
+    indicacion.setWordWrap(True)
+    layout.addWidget(indicacion)
+    from editor_preparaciones import EditorPreparaciones
+    layout.addWidget(QLabel("Preparaciones y recargos (opcional)"))
+    variantes = EditorPreparaciones(producto['preparaciones'])
     variantes.setEnabled(seccion.currentText() == COCINA)
     seccion.currentTextChanged.connect(lambda valor: variantes.setEnabled(valor == COCINA))
     layout.addWidget(variantes)
-    guardar = QPushButton("Guardar")
+    guardar = QPushButton("Guardar configuración")
     guardar.clicked.connect(dialogo.accept)
     layout.addWidget(guardar)
     if dialogo.exec() != QDialog.DialogCode.Accepted:
         return
     try:
         with sesion.conexion() as db:
-            db.execute("UPDATE productos SET seccion = ?, preparaciones = ? WHERE id = ?",
-                       (seccion.currentText(), variantes.text().strip(), identificador))
+            db.execute("UPDATE productos SET seccion = ?, preparaciones = ?, lleva_acompanamiento = ?, cantidad_acompanamientos = ? WHERE id = ?",
+                       (seccion.currentText(), variantes.text().strip(), int(lleva.isChecked()), cantidad_lados.value(), identificador))
             if seccion.currentText() != COCINA:
                 db.execute("DELETE FROM platos_agotados WHERE producto_id=?", (identificador,))
     except sqlite3.Error as error:
@@ -1554,12 +1599,17 @@ def configurar_recargo_extra():
         return
     from PySide6.QtWidgets import QDoubleSpinBox
     from estilos import FORMULARIOS
-    dialogo = QDialog(ventana)
+    dialogo = DialogoIntegrado(ventana)
     dialogo.setWindowTitle("Recargo por porción extra")
     dialogo.setStyleSheet(FORMULARIOS)
     layout = QVBoxLayout(dialogo)
     lado = QComboBox()
     lado.addItems(acompanamientos(productos))
+    seleccionado = lista_catalogo.currentItem()
+    if seleccionado is not None:
+        producto = next((p for p in productos if p['id'] == seleccionado.data(Qt.ItemDataRole.UserRole)), None)
+        if producto and producto['seccion'] == ACOMPANAMIENTO:
+            lado.setCurrentText(producto['nombre'])
     importe = QDoubleSpinBox()
     importe.setRange(0, 999999.99)
     importe.setDecimals(2)
@@ -1600,13 +1650,48 @@ from PySide6.QtCore import QObject, QEvent
 from PySide6.QtWidgets import QBoxLayout, QScroller
 
 pagina_productos.setObjectName("PaginaProductos")
-pagina_productos.setStyleSheet(CATALOGO)
+pagina_productos.setStyleSheet(CATALOGO + ESTILO_SELECTORES)
 
 # Distribución táctil: formulario y catálogo, adaptados al ancho disponible.
 layout_productos.setContentsMargins(16, 16, 16, 16)
-titulo_productos = QLabel("Productos")
-titulo_productos.setStyleSheet("font-size: 28px; font-weight: bold; color: #F4F2ED;")
+titulo_productos = QLabel("Tu menú")
+titulo_productos.setStyleSheet("font-size: 28px; font-weight: bold; color: #eaf3ff;")
 layout_productos.addWidget(titulo_productos)
+subtitulo_productos = QLabel("Añade productos y organiza las opciones de cada plato.")
+layout_productos.addWidget(subtitulo_productos)
+from PySide6.QtWidgets import QButtonGroup
+selector_menu = QHBoxLayout()
+grupo_menu = QButtonGroup(pagina_productos)
+botones_menu = {}
+
+def cambiar_menu_catalogo(menu):
+    global menu_catalogo_actual
+    menu_catalogo_actual = menu
+    botones_menu[menu].setChecked(True)
+    txt_categoria_producto.setText(menu)
+    titulo_catalogo.setText({BEBIDAS: "Productos del bar", COCINA: "Platos de cocina",
+                            ACOMPANAMIENTO: "Tus acompañamientos"}[menu])
+    titulo_formulario.setText("Añadir acompañamiento" if menu == ACOMPANAMIENTO else "Añadir producto")
+    ayuda_catalogo.setText(
+        "Aquí están los acompañamientos que puedes ofrecer con los platos. El primero está incluido; configura aparte el precio de la porción extra."
+        if menu == ACOMPANAMIENTO else
+        "Selecciona un producto para gestionar sus opciones. Los acompañamientos tienen su propia sección arriba.")
+    btn_configurar_menu.setVisible(menu == COCINA)
+    btn_recargos.setVisible(menu == ACOMPANAMIENTO)
+    btn_ventas_cocina.setVisible(menu == COCINA)
+    actualizar_lista_catalogo()
+
+for etiqueta, menu in (("Bar", BEBIDAS), ("Cocina", COCINA), ("Acompañamientos", ACOMPANAMIENTO)):
+    boton = QPushButton(etiqueta)
+    boton.setCheckable(True)
+    boton.setMinimumHeight(58)
+    boton.setProperty('selectorProducto', True)
+    grupo_menu.addButton(boton)
+    botones_menu[menu] = boton
+    selector_menu.addWidget(boton)
+    boton.clicked.connect(lambda checked=False, m=menu: cambiar_menu_catalogo(m))
+botones_menu[BEBIDAS].setChecked(True)
+layout_productos.addLayout(selector_menu)
 
 scroll_productos_config = QScrollArea()
 scroll_productos_config.setWidgetResizable(True)
@@ -1616,11 +1701,11 @@ scroll_productos_config.setStyleSheet("QScrollArea { background: transparent; bo
 contenido_productos_config = QWidget()
 contenido_productos_config.setObjectName("FondoProductosConfig")
 contenido_productos_config.setStyleSheet(
-    "QWidget#FondoProductosConfig { background-color: #132320; }"
+    "QWidget#FondoProductosConfig { background-color: #0b1425; }"
 )
 scroll_productos_config.viewport().setObjectName("ViewportProductosConfig")
 scroll_productos_config.viewport().setStyleSheet(
-    "QWidget#ViewportProductosConfig { background-color: #132320; }"
+    "QWidget#ViewportProductosConfig { background-color: #0b1425; }"
 )
 paneles_productos = QBoxLayout(QBoxLayout.Direction.LeftToRight, contenido_productos_config)
 paneles_productos.setContentsMargins(0, 0, 0, 0)
@@ -1631,19 +1716,19 @@ tarjeta_formulario.setProperty("tarjeta", True)
 formulario_tactil = QVBoxLayout(tarjeta_formulario)
 formulario_tactil.setContentsMargins(20, 20, 20, 20)
 formulario_tactil.setSpacing(10)
-titulo_formulario = QLabel("Añadir producto")
-titulo_formulario.setStyleSheet("font-size: 23px; font-weight: bold; color: #F2C66D;")
+titulo_formulario = QLabel("1. Añadir producto")
+titulo_formulario.setStyleSheet("font-size: 23px; font-weight: bold; color: #85eaff;")
 formulario_tactil.addWidget(titulo_formulario)
 for texto_campo, campo in (("Nombre", txt_nombre_producto),
                            ("Precio · B/.", txt_precio_producto),
-                           ("Categoría", txt_categoria_producto)):
+                           ("Tipo de producto · elige una opción", txt_categoria_producto)):
     formulario_tactil.addWidget(QLabel(texto_campo))
     campo.setMinimumHeight(56)
     formulario_tactil.addWidget(campo)
 txt_precio_producto.setInputMethodHints(Qt.InputMethodHint.ImhFormattedNumbersOnly)
-btn_elegir_imagen.setText("Elegir foto del producto")
+btn_elegir_imagen.setText("+ Añadir foto (opcional)")
 formulario_tactil.addWidget(btn_elegir_imagen)
-vista_imagen_producto.setStyleSheet("background-color: #10221e; border: 1px dashed #516b60; border-radius: 10px; color: #AAB7CB;")
+vista_imagen_producto.setStyleSheet("background-color: #101e34; border: 1px dashed #287b99; border-radius: 10px; color: #AAB7CB;")
 formulario_tactil.addWidget(vista_imagen_producto)
 btn_guardar_producto.setObjectName("GuardarProducto")
 btn_guardar_producto.setText("Guardar producto")
@@ -1657,10 +1742,10 @@ tarjeta_catalogo.setProperty("tarjeta", True)
 catalogo_tactil = QVBoxLayout(tarjeta_catalogo)
 catalogo_tactil.setContentsMargins(20, 20, 20, 20)
 catalogo_tactil.setSpacing(12)
-titulo_catalogo = QLabel("Catálogo de productos")
-titulo_catalogo.setStyleSheet("font-size: 23px; font-weight: bold; color: #F2C66D;")
+titulo_catalogo = QLabel("Productos del bar")
+titulo_catalogo.setStyleSheet("font-size: 23px; font-weight: bold; color: #85eaff;")
 catalogo_tactil.addWidget(titulo_catalogo)
-ayuda_catalogo = QLabel("Selecciona un producto para configurar su menú o retirarlo.")
+ayuda_catalogo = QLabel("Selecciona un producto para gestionar sus opciones. Cambia entre Bar y Cocina con los botones de arriba.")
 ayuda_catalogo.setWordWrap(True)
 catalogo_tactil.addWidget(ayuda_catalogo)
 lista_catalogo.setMinimumHeight(260)
@@ -1669,10 +1754,10 @@ lista_catalogo.setSpacing(4)
 lista_catalogo.setVerticalScrollMode(QListWidget.ScrollMode.ScrollPerPixel)
 catalogo_tactil.addWidget(lista_catalogo, 1)
 btn_eliminar_producto.setObjectName("EliminarProducto")
-btn_configurar_menu = QPushButton("Configurar menú y preparaciones")
+btn_configurar_menu = QPushButton("Preparaciones y recargos del producto")
 btn_configurar_menu.clicked.connect(configurar_menu_producto)
 catalogo_tactil.addWidget(btn_configurar_menu)
-btn_recargos = QPushButton("Recargo por acompañamiento extra")
+btn_recargos = QPushButton("Configurar precio de la porción extra")
 btn_recargos.clicked.connect(configurar_recargo_extra)
 catalogo_tactil.addWidget(btn_recargos)
 
@@ -1684,7 +1769,7 @@ def ver_ventas_cocina():
     except (ValueError, sqlite3.Error) as error:
         mensaje_producto.setText(f"No se pudieron leer las ventas: {error}")
         return
-    dialogo = QDialog(ventana)
+    dialogo = DialogoIntegrado(ventana)
     dialogo.setWindowTitle("Platos vendidos hoy")
     from estilos import FORMULARIOS
     dialogo.setStyleSheet(FORMULARIOS)
@@ -1706,6 +1791,13 @@ btn_ventas_cocina.clicked.connect(ver_ventas_cocina)
 catalogo_tactil.addWidget(btn_ventas_cocina)
 
 catalogo_tactil.addWidget(btn_eliminar_producto)
+def sincronizar_tipo_producto(valor):
+    menu = valor
+    if menu != menu_catalogo_actual:
+        cambiar_menu_catalogo(menu)
+        txt_categoria_producto.setText(valor)
+txt_categoria_producto.cambiado.connect(sincronizar_tipo_producto)
+cambiar_menu_catalogo(BEBIDAS)
 for boton_tactil in (btn_elegir_imagen, btn_guardar_producto, btn_eliminar_producto):
     boton_tactil.setMinimumHeight(60)
 
@@ -1717,7 +1809,23 @@ for superficie_tactil in (scroll_productos_config.viewport(), lista_catalogo.vie
     QScroller.grabGesture(superficie_tactil, QScroller.ScrollerGestureType.TouchGesture)
 
 class AdaptarPanelesProductos(QObject):
+    def __init__(self, pagina):
+        super().__init__(pagina)
+        self.pagina = pagina
+        self.cerrando = False
+        app.aboutToQuit.connect(self.detener)
+
+    def detener(self):
+        from shiboken6 import isValid
+        self.cerrando = True
+        if isValid(self.pagina) and isValid(self):
+            self.pagina.removeEventFilter(self)
+
     def eventFilter(self, objeto, evento):
+        from shiboken6 import isValid
+        if (self.cerrando or QApplication.closingDown() or not isValid(objeto)
+                or not isValid(paneles_productos)):
+            return False
         if evento.type() in (QEvent.Type.Resize, QEvent.Type.Show):
             direccion = (QBoxLayout.Direction.TopToBottom if objeto.width() < 900
                          else QBoxLayout.Direction.LeftToRight)
@@ -1750,6 +1858,7 @@ indice_configuracion = contenido_menu_navegacion.layout().indexOf(btn_menu_confi
 contenido_menu_navegacion.layout().insertWidget(indice_configuracion, btn_menu_inventario)
 
 def abrir_inventario():
+    pagina_inventario.mostrar_cierre = False
     if sesion.usuario is not None:
         pagina_inventario.modo_admin = "general"
         pagina_inventario.actualizar()
@@ -1767,7 +1876,7 @@ contenido_menu_navegacion.layout().insertWidget(
 )
 
 def abrir_hoja_inventarios():
-    if sesion.es_admin():
+    if sesion.es_admin() or sesion.es_venta_libre():
         pagina_hoja_inventarios.actualizar()
         titulo_pagina.setText("Hoja de inventarios")
         paginas.setCurrentWidget(pagina_hoja_inventarios)
@@ -1793,7 +1902,7 @@ panel_lateral = ventana.findChild(QWidget, "PanelLateral")
 botones_navegacion = panel_lateral.findChildren(QPushButton)
 etiqueta_sesion = QLabel()
 etiqueta_sesion.setWordWrap(True)
-etiqueta_sesion.setStyleSheet("color: #F2C66D; font-size: 13px; padding: 8px;")
+etiqueta_sesion.setStyleSheet("color: #85eaff; font-size: 13px; padding: 8px;")
 btn_cerrar_sesion = QPushButton("Cerrar sesión")
 btn_cerrar_sesion.setObjectName("btnCerrarSesion")
 contenido_menu = btn_menu_mesas.parentWidget()
@@ -1861,15 +1970,15 @@ def actualizar_asignaciones():
 # Elegir una mesa es un paso táctil sobre la misma pantalla de Mesas.
 barra_asignacion = QWidget()
 barra_asignacion.setObjectName("BarraAsignacion")
-barra_asignacion.setStyleSheet("QWidget#BarraAsignacion { background: #26354B; border: 1px solid #D6AE62; border-radius: 10px; }")
+barra_asignacion.setStyleSheet("QWidget#BarraAsignacion { background: #26354B; border: 1px solid #23d7f4; border-radius: 10px; }")
 fila_asignacion = QHBoxLayout(barra_asignacion)
 aviso_asignacion = QLabel()
 aviso_asignacion.setTextFormat(Qt.TextFormat.PlainText)
 aviso_asignacion.setWordWrap(True)
-aviso_asignacion.setStyleSheet("color: #F2C66D; font-size: 20px; padding: 8px;")
+aviso_asignacion.setStyleSheet("color: #85eaff; font-size: 20px; padding: 8px;")
 btn_cancelar_asignacion = QPushButton("Cancelar")
 btn_cancelar_asignacion.setMinimumHeight(54)
-btn_cancelar_asignacion.setStyleSheet("background: #1B293F; color: #F4F2ED; padding: 12px 24px; border-radius: 8px; font-size: 16px;")
+btn_cancelar_asignacion.setStyleSheet("background: #1B293F; color: #eaf3ff; padding: 12px 24px; border-radius: 8px; font-size: 16px;")
 fila_asignacion.addWidget(aviso_asignacion, 1)
 fila_asignacion.addWidget(btn_cancelar_asignacion)
 distribucion_mesas.insertWidget(0, barra_asignacion)
@@ -1912,7 +2021,7 @@ def activar_mesa(nombre_mesa, boton):
     actualizar_asignaciones()
     abrir_cliente(identificador)
 
-def abrir_cliente(identificador):
+def abrir_cliente(identificador, regreso=None):
     if sesion.usuario is None:
         return
     cliente = gestion_clientes.obtener(identificador)
@@ -1923,8 +2032,8 @@ def abrir_cliente(identificador):
         return
     cancelar_asignacion_cliente()
     clientes_activos[cliente['mesa']] = identificador
-    abrir_pedido(cliente['mesa'])
-    titulo_pagina.setText(f"Pedidos · {cliente['mesa']}")
+    abrir_pedido(cliente['mesa'], regreso=regreso)
+    titulo_pagina.setText(f"Pedidos · {nombre_operacion(cliente['mesa'])}")
 
 from dialogos import EditorNombreCliente
 editor_cliente = EditorNombreCliente(ventana, gestion_clientes)
@@ -1936,9 +2045,35 @@ def agregar_cliente_tactil():
     if identificador is not None:
         pagina_clientes.buscar.clear()
         pagina_clientes.actualizar()
-        elegir_mesa_cliente(identificador)
+        abrir_clientes()
 
-pagina_clientes = PaginaClientes(gestion_clientes, pedidos, abrir_cliente, agregar_cliente_tactil)
+def abrir_barra_cliente(identificador):
+    try:
+        destino = gestion_clientes.asignar_barra(identificador)
+    except (ValueError, PermissionError, sqlite3.Error) as error:
+        QMessageBox.warning(ventana, 'Cuenta de barra', str(error))
+        return
+    cancelar_asignacion_cliente()
+    clientes_activos[destino] = identificador
+    actualizar_asignaciones()
+    abrir_cliente(identificador, regreso=(abrir_clientes, 'Clientes'))
+
+def editar_cliente_ficha(identificador):
+    from clientes_ficha import editar_ficha
+    anterior=gestion_clientes.obtener(identificador)
+    if not editar_ficha(ventana,gestion_clientes,identificador):
+        return
+    actual=gestion_clientes.obtener(identificador)
+    pedidos.clear()
+    pedidos.update(gestion_clientes.cargar_pedidos())
+    if anterior and actual and anterior['mesa']!=actual['mesa']:
+        pantalla=ventanas_pedido.pop(anterior['mesa'],None)
+        if pantalla is not None: pantalla.deleteLater()
+        clientes_activos.pop(anterior['mesa'],None)
+    pagina_clientes.actualizar()
+    actualizar_asignaciones()
+
+pagina_clientes = PaginaClientes(gestion_clientes, pedidos, abrir_cliente, agregar_cliente_tactil, abrir_barra_cliente, elegir_mesa_cliente, editar_cliente_ficha)
 paginas.addWidget(pagina_clientes)
 btn_menu_clientes = ventana.findChild(QPushButton, "pushButton_3")
 
@@ -1967,17 +2102,52 @@ btn_venta_rapida = QPushButton('Venta rápida')
 btn_venta_rapida.setObjectName('btnVentaRapida')
 btn_venta_rapida.setMinimumHeight(120)
 btn_venta_rapida.setStyleSheet('''
-    QPushButton { background: #EDBD58; color: #132320; border: none;
+    QPushButton { background: #23d7f4; color: #0b1425; border: none;
         border-radius: 16px; font-size: 28px; font-weight: bold; padding: 24px; }
-    QPushButton:pressed { background: #D6A74C; }
+    QPushButton:pressed { background: #ec48c4; }
 ''')
+btn_barra_inicio=QPushButton('Barra\nCuentas individuales · Ver consumos y cobrar')
+btn_barra_inicio.setMinimumHeight(112)
+btn_barra_inicio.setStyleSheet("QPushButton { background: qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #112d51,stop:1 #251634); color: #85f0ff; border: 2px solid #23d7f4; border-radius: 18px; font-size: 24px; font-weight: bold; padding: 18px; } QPushButton:hover { background: #173f60; border-color: #ffe4ac; }")
+def volver_a_barra():
+    abrir_inicio()
+    abrir_barra_inicio()
+
+def volver_a_cuentas_abiertas():
+    abrir_inicio()
+    abrir_cuentas_abiertas()
+
+def abrir_barra_inicio():
+    if sesion.usuario is None or sesion.usuario.get('rol')=='cocinero': return
+    from clientes_ficha import elegir_cuenta_barra
+    destino=elegir_cuenta_barra(ventana,gestion_clientes,pedidos)
+    if destino=='clientes': abrir_clientes()
+    elif destino is not None: abrir_cliente(destino, regreso=(volver_a_barra, "Barra"))
+btn_barra_inicio.clicked.connect(abrir_barra_inicio)
+btn_cuentas_abiertas=QPushButton('Cuentas abiertas\nMesas y clientes · Ver totales y continuar pedidos')
+btn_cuentas_abiertas.setMinimumHeight(105)
+btn_cuentas_abiertas.setStyleSheet("QPushButton { background: #1c203d; color: #f4c1ef; border: 2px solid #ec48c4; border-radius: 16px; font-size: 22px; padding: 18px; font-weight: bold; } QPushButton:hover { background: #342445; }")
+def abrir_cuentas_abiertas():
+    if sesion.usuario is None or sesion.usuario.get('rol')=='cocinero': return
+    from cuentas_abiertas import elegir_cuenta
+    pedidos.clear()
+    pedidos.update(gestion_clientes.cargar_pedidos())
+    filtrar_mesas(filtro_mesas_actual)
+    clave=elegir_cuenta(ventana,gestion_clientes.listar(),pedidos)
+    if clave is not None:
+        clientes=gestion_clientes.de_mesa(clave)
+        if clientes: abrir_cliente(clientes[0]['id'], regreso=(volver_a_cuentas_abiertas, 'Cuentas abiertas'))
+        else: abrir_pedido(clave, regreso=(volver_a_cuentas_abiertas, 'Cuentas abiertas'))
+btn_cuentas_abiertas.clicked.connect(abrir_cuentas_abiertas)
+layout_inicio.addWidget(btn_cuentas_abiertas)
+layout_inicio.addWidget(btn_barra_inicio)
 layout_inicio.addWidget(btn_venta_rapida)
 btn_agregar_inventario_turno = QPushButton("Agregar inventario a este turno")
 btn_agregar_inventario_turno.setMinimumHeight(72)
 btn_agregar_inventario_turno.setStyleSheet("""
-    QPushButton { background: #29453e; color: #F4F2ED; border: 2px solid #D6AE62;
+    QPushButton { background: #112e45; color: #eaf3ff; border: 2px solid #23d7f4;
         border-radius: 12px; font-size: 20px; font-weight: bold; padding: 14px; }
-    QPushButton:pressed { background: #36564b; }
+    QPushButton:pressed { background: #1a4260; }
 """)
 layout_inicio.addWidget(btn_agregar_inventario_turno)
 
@@ -1985,22 +2155,22 @@ panel_agregar_inventario_turno = QWidget()
 panel_agregar_inventario_turno.setObjectName("PanelAgregarInventarioTurno")
 panel_agregar_inventario_turno.setStyleSheet("""
     QWidget#PanelAgregarInventarioTurno {
-        background: #1a2e2b; border: 1px solid #516b60; border-radius: 14px;
+        background: #111f35; border: 1px solid #287b99; border-radius: 14px;
     }
     QWidget#PanelAgregarInventarioTurno QLabel {
         color: #DCE4F0; background: transparent; font-size: 16px;
     }
     QWidget#PanelAgregarInventarioTurno QComboBox,
     QWidget#PanelAgregarInventarioTurno QLineEdit {
-        background: #10221e; color: #F4F2ED; border: 1px solid #516b60;
+        background: #101e34; color: #eaf3ff; border: 1px solid #287b99;
         border-radius: 10px; padding: 10px 14px; font-size: 19px; min-height: 48px;
     }
     QWidget#PanelAgregarInventarioTurno QComboBox QAbstractItemView {
-        background: #1a2e2b; color: #F4F2ED; selection-background-color: #E9BA54;
+        background: #111f35; color: #eaf3ff; selection-background-color: #25d6f4;
         selection-color: #111827;
     }
     QWidget#PanelAgregarInventarioTurno QPushButton {
-        background: #E9BA54; color: #111827; border: 2px solid #E9BA54;
+        background: #25d6f4; color: #111827; border: 2px solid #25d6f4;
         border-radius: 12px; padding: 14px 20px; font-size: 19px;
         font-weight: bold; min-height: 56px;
     }
@@ -2038,6 +2208,22 @@ layout_inicio.addWidget(panel_agregar_inventario_turno)
 panel_agregar_inventario_turno.hide()
 btn_agregar_inventario_turno.hide()
 layout_inicio.addStretch()
+btn_cierre_desde_inicio = QPushButton("Cerrar o cambiar turno")
+btn_cierre_desde_inicio.setMinimumHeight(64)
+btn_cierre_desde_inicio.setStyleSheet("QPushButton { background: #71343c; color: white; border: 1px solid #a65660; border-radius: 12px; padding: 14px; font-size: 19px; }")
+btn_cierre_desde_inicio.hide()
+def abrir_cierre_desde_inicio():
+    if sesion.usuario is None:
+        return
+    from cierre_integrado import abrir_cierre_integrado
+    cierre = abrir_cierre_integrado(ventana, sesion, gestion_turnos)
+    if cierre._resumen_cierre:
+        pagina_inventario._resumen_cierre = cierre._resumen_cierre
+        pagina_inventario._turno_cierre = cierre._turno_cierre
+    aplicar_permisos()
+    cierre.parentWidget().deleteLater()
+btn_cierre_desde_inicio.clicked.connect(abrir_cierre_desde_inicio)
+layout_inicio.addWidget(btn_cierre_desde_inicio)
 paginas.addWidget(pagina_inicio)
 btn_menu_inicio = ventana.findChild(QPushButton, 'pushButton')
 
@@ -2045,21 +2231,21 @@ panel_acciones_admin = QWidget()
 panel_acciones_admin.setObjectName("AccionesAdminInicio")
 panel_acciones_admin.setStyleSheet("""
     QWidget#AccionesAdminInicio {
-        background: #1a2e2b; border: 1px solid #40594f; border-radius: 16px;
+        background: #111f35; border: 1px solid #20354f; border-radius: 16px;
     }
     QWidget#AccionesAdminInicio QLabel {
-        color: #F2C66D; background: transparent; font-size: 22px;
+        color: #85eaff; background: transparent; font-size: 22px;
         font-weight: bold; border: none;
     }
     QWidget#AccionesAdminInicio QPushButton {
-        background: #29453e; color: #F4F2ED; border: 2px solid #516b60;
+        background: #112e45; color: #eaf3ff; border: 2px solid #287b99;
         border-radius: 12px; font-size: 20px; font-weight: bold;
         padding: 14px 20px; min-height: 68px;
     }
     QWidget#AccionesAdminInicio QPushButton:hover {
-        border-color: #D6AE62; color: #F2C66D;
+        border-color: #23d7f4; color: #85eaff;
     }
-    QWidget#AccionesAdminInicio QPushButton:pressed { background: #36564b; }
+    QWidget#AccionesAdminInicio QPushButton:pressed { background: #1a4260; }
 """)
 layout_acciones_admin = QVBoxLayout(panel_acciones_admin)
 layout_acciones_admin.setContentsMargins(18, 18, 18, 18)
@@ -2112,9 +2298,9 @@ fila_titulo.addWidget(titulo_pagina, 1)
 btn_inventario_desde_pedido = QPushButton("Agregar inventario")
 btn_inventario_desde_pedido.setMinimumHeight(52)
 btn_inventario_desde_pedido.setStyleSheet("""
-    QPushButton { background: #29453e; color: #F4F2ED; border: 1px solid #D6AE62;
+    QPushButton { background: #112e45; color: #eaf3ff; border: 1px solid #23d7f4;
         border-radius: 10px; padding: 8px 14px; font-size: 15px; font-weight: bold; }
-    QPushButton:hover { background: #36564b; color: #F2C66D; }
+    QPushButton:hover { background: #1a4260; color: #85eaff; }
 """)
 btn_inventario_desde_pedido.setToolTip(
     "Registrar existencias nuevas recibidas para el inventario disponible"
@@ -2131,7 +2317,7 @@ def ajustar_navegacion():
         sesion.usuario is not None and pagina == pagina_inicio
     )
     btn_regreso_pedido.setVisible(
-        pagina != pagina_inicio and sesion.usuario is not None
+        pagina != pagina_inicio and sesion.usuario is not None and sesion.usuario.get('rol') != 'cocinero'
     )
     turno_actual = (
         gestion_turnos.turno_del_usuario(sesion.usuario["id"])
@@ -2251,7 +2437,7 @@ def guardar_inventario_agregado():
         if sesion.es_venta_libre()
         else "Inventario agregado al turno y registrado en la Hoja de inventarios."
     )
-    estado_inventario_agregado.setStyleSheet("color: #8ED6A0;")
+    estado_inventario_agregado.setStyleSheet("color: #54e3b7;")
     pagina_inventario.actualizar()
 
 btn_menu_inicio.clicked.connect(abrir_inicio)
@@ -2263,29 +2449,29 @@ btn_confirmar_inventario_agregado.clicked.connect(guardar_inventario_agregado)
 pagina_verificacion_libre = QWidget()
 pagina_verificacion_libre.setObjectName('VerificacionInventarioLibre')
 pagina_verificacion_libre.setStyleSheet('''
-    QWidget#VerificacionInventarioLibre { background: #132320; color: #F4F2ED; }
-    QLabel { color: #F4F2ED; background: transparent; font-size: 17px; }
+    QWidget#VerificacionInventarioLibre { background: #0b1425; color: #eaf3ff; }
+    QLabel { color: #eaf3ff; background: transparent; font-size: 17px; }
     QFrame#FilaConteoLibre { background: #182337; border: 1px solid #34445A; border-radius: 12px; }
     QLabel#ProductoConteo { color: #F6F1E5; font-size: 19px; font-weight: 600; }
     QLabel#DetalleConteo { color: #B6C2D2; font-size: 14px; }
-    QLineEdit#CantidadLibre { background: #132320; color: #FFF4DC; border: 1px solid #516179;
+    QLineEdit#CantidadLibre { background: #0b1425; color: #FFF4DC; border: 1px solid #516179;
         border-radius: 9px; padding: 6px; font-size: 20px; }
-    QLineEdit#CantidadLibre:focus { border: 2px solid #D6AE62; }
+    QLineEdit#CantidadLibre:focus { border: 2px solid #23d7f4; }
     QPushButton:disabled { color: #BAC3D0; background: #344052; }
-    QPushButton { background: #D6AE62; color: #132320; border: none;
+    QPushButton { background: #23d7f4; color: #0b1425; border: none;
         border-radius: 10px; min-height: 58px; padding: 12px; font-size: 19px; font-weight: bold; }
 ''')
 layout_verificacion_libre = QVBoxLayout(pagina_verificacion_libre)
 layout_verificacion_libre.setContentsMargins(24, 20, 24, 20)
 titulo_verificacion_libre = QLabel('Conteo de existencias')
-titulo_verificacion_libre.setStyleSheet('color: #D6AE62; font-size: 27px; font-weight: bold;')
+titulo_verificacion_libre.setStyleSheet('color: #23d7f4; font-size: 27px; font-weight: bold;')
 layout_verificacion_libre.addWidget(titulo_verificacion_libre)
-layout_verificacion_libre.addWidget(QLabel('Escribe cuántas unidades hay disponibles de cada producto.'))
+layout_verificacion_libre.addWidget(QLabel('Los productos sin existencias empiezan en 0. Cuenta los demás y corrige cualquier cantidad si hace falta.'))
 scroll_verificacion_libre = QScrollArea()
 scroll_verificacion_libre.setWidgetResizable(True)
 scroll_verificacion_libre.setFrameShape(QFrame.Shape.NoFrame)
 contenido_verificacion_libre = QWidget()
-contenido_verificacion_libre.setStyleSheet('background: #101c1b;')
+contenido_verificacion_libre.setStyleSheet('background: #0b1425;')
 filas_verificacion_libre = QVBoxLayout(contenido_verificacion_libre)
 filas_verificacion_libre.setSpacing(10)
 scroll_verificacion_libre.setWidget(contenido_verificacion_libre)
@@ -2329,6 +2515,8 @@ def cargar_verificacion_libre():
         cantidad.setInputMethodHints(Qt.InputMethodHint.ImhDigitsOnly)
         cantidad.setValidator(QRegularExpressionValidator(
             QRegularExpression(r'(?:[0-9]{1,6}|1000000)'), cantidad))
+        if stock == 0:
+            cantidad.setText("0")
         cantidad.textChanged.connect(actualizar_progreso_conteo)
         layout_fila.addWidget(cantidad)
         filas_verificacion_libre.addWidget(fila)
@@ -2361,12 +2549,21 @@ paginas_operacion = (
 )
 
 def proteger_navegacion(indice):
+    rol = sesion.usuario.get('rol') if sesion.usuario else None
+    if rol == 'cocinero':
+        if paginas.currentWidget() is not pagina_cocina:
+            paginas.setCurrentWidget(pagina_cocina)
+        return
+    if rol == 'mesero':
+        if paginas.currentWidget() not in (pagina_inicio,pagina_mesas,pagina_clientes,pagina_pedido):
+            abrir_mesas()
+        return
     if sesion.es_venta_libre():
         if not sesion.inventario_libre_verificado:
             paginas.setCurrentWidget(pagina_verificacion_libre)
         elif paginas.currentWidget() not in (
             pagina_inicio, pagina_mesas, pagina_clientes, pagina_pedido,
-            pagina_cobro, pagina_historial, pagina_pedidos_table
+            pagina_cobro, pagina_historial, pagina_pedidos_table, pagina_hoja_inventarios
         ):
             abrir_inicio()
         return
@@ -2378,6 +2575,33 @@ paginas.currentChanged.connect(proteger_navegacion)
 def aplicar_permisos():
     """Admin usa el menú de gestión; empleados operan según su turno."""
     admin = sesion.es_admin()
+    rol = sesion.usuario.get('rol') if sesion.usuario else None
+    if rol in ('mesero','cocinero'):
+        for boton in botones_navegacion:
+            permitido = boton is btn_cerrar_sesion or (rol == 'mesero' and boton in (btn_menu_inicio,btn_menu_mesas,btn_menu_clientes))
+            boton.setVisible(permitido)
+            boton.setEnabled(permitido)
+        panel_acciones_admin.hide()
+        btn_venta_rapida.hide()
+        btn_pedidos_table.hide()
+        btn_agregar_inventario_turno.hide()
+        btn_inventario_desde_pedido.hide()
+        etiqueta_sesion.setText(f"{sesion.usuario['nombre']} · {rol.capitalize()}")
+        paginas.setEnabled(True)
+        for pantalla in ventanas_pedido.values():
+            cobrar = pantalla.findChild(QPushButton, 'btnCobrar')
+            if cobrar: cobrar.setVisible(False)
+        if rol == 'cocinero':
+            titulo_pagina.setText('Cocina')
+            paginas.setCurrentWidget(pagina_cocina)
+            pagina_cocina.actualizar()
+        else:
+            abrir_mesas()
+        ajustar_navegacion()
+        return
+    for pantalla in ventanas_pedido.values():
+        cobrar = pantalla.findChild(QPushButton, 'btnCobrar')
+        if cobrar: cobrar.setVisible(True)
     venta_libre = sesion.es_venta_libre()
     puede_operar = admin or gestion_turnos.permite_operar()
     btn_pedidos_table.setVisible(sesion.usuario is not None and puede_operar)
@@ -2390,7 +2614,7 @@ def aplicar_permisos():
             ))
             or (not admin and (
                 (not venta_libre and boton in (btn_menu_inventario, btn_menu_historial))
-                or (venta_libre and puede_operar and boton is btn_menu_historial)
+                or (venta_libre and puede_operar and boton in (btn_menu_historial,btn_hoja_inventarios))
                 or (puede_operar and boton in (
                     btn_menu_inicio, btn_menu_mesas, btn_menu_clientes
                 ))
@@ -2400,10 +2624,15 @@ def aplicar_permisos():
         boton.setEnabled(permitido)
     panel_acciones_admin.setVisible(admin)
     btn_venta_rapida.setVisible(not admin)
+    mostrar_cuentas = bool(sesion.usuario and not admin and sesion.usuario.get('rol') != 'cocinero')
+    btn_barra_inicio.setVisible(mostrar_cuentas)
+    btn_cuentas_abiertas.setVisible(mostrar_cuentas)
     turno_actual_cajero = (
         gestion_turnos.turno_del_usuario(sesion.usuario["id"])
         if sesion.usuario and not admin and not venta_libre else None
     )
+    turno_para_cierre = gestion_turnos.turno_abierto() if admin else turno_actual_cajero
+    btn_cierre_desde_inicio.setVisible(bool(turno_para_cierre and turno_para_cierre['estado'] == 'activo'))
     puede_agregar_inventario = bool(
         venta_libre and sesion.inventario_libre_verificado
         or turno_actual_cajero and turno_actual_cajero["estado"] == "activo"
@@ -2445,7 +2674,7 @@ def aplicar_permisos():
     btn_menu_historial.setText("Historial" if admin else "Mis cobros")
     pagina_historial.setEnabled(sesion.usuario is not None)
     pagina_inventario.setEnabled(sesion.usuario is not None)
-    pagina_hoja_inventarios.setEnabled(admin)
+    pagina_hoja_inventarios.setEnabled(admin or venta_libre)
     pagina_horario_turnos.setEnabled(admin)
     paginas.setEnabled(sesion.usuario is not None)
     if sesion.usuario is not None and not venta_libre:
@@ -2510,10 +2739,22 @@ def reflejar_solicitud_table(mesa, cuenta):
 pagina_pedidos_table = PaginaPedidosTable(
     sesion, gestion_turnos, reflejar_solicitud_table, btn_pedidos_table, ventana
 )
-pagina_pedidos_table.panel.setParent(pagina_configuracion)
-layout_configuracion.insertWidget(
-    layout_configuracion.count() - 1, pagina_pedidos_table.panel
-)
+from configuracion_visual import organizar_configuracion
+pagina_dispositivos = QWidget()
+layout_dispositivos = QVBoxLayout(pagina_dispositivos)
+volver_dispositivos = QPushButton("‹ Volver a Configuración")
+volver_dispositivos.clicked.connect(lambda: abrir_seccion_admin(pagina_configuracion))
+layout_dispositivos.addWidget(volver_dispositivos)
+titulo_dispositivos = QLabel("Conectar dispositivos")
+titulo_dispositivos.setStyleSheet("color: #ff69d5; font-size: 26px;")
+layout_dispositivos.addWidget(titulo_dispositivos)
+layout_dispositivos.addWidget(pagina_pedidos_table.panel)
+layout_dispositivos.addStretch()
+paginas.addWidget(pagina_dispositivos)
+btn_dispositivos = QPushButton("Dispositivos móviles")
+btn_dispositivos.clicked.connect(lambda: abrir_seccion_admin(pagina_dispositivos))
+layout_configuracion.insertWidget(layout_configuracion.count() - 1, btn_dispositivos)
+organizar_configuracion(layout_configuracion)
 pagina_pedidos_table.panel.show()
 paginas.addWidget(pagina_pedidos_table)
 paginas_operacion = (*paginas_operacion, pagina_pedidos_table)
@@ -2525,6 +2766,7 @@ botones_pagina_navegacion = {
     pagina_historial: btn_menu_historial,
     pagina_configuracion: btn_menu_configuracion,
     pagina_productos: btn_menu_configuracion,
+    pagina_dispositivos: btn_menu_configuracion,
     pagina_usuarios: btn_menu_configuracion,
     pagina_config_mesas: btn_menu_configuracion,
     pagina_mi_cuenta: btn_menu_configuracion,
@@ -2577,13 +2819,16 @@ def permitir_desplazamiento(pagina):
     layout.addWidget(scroll)
 
 
-for pagina_larga in (pagina_configuracion, pagina_usuarios, pagina_inicio, pagina_config_mesas):
+for pagina_larga in (pagina_configuracion, pagina_dispositivos, pagina_usuarios, pagina_inicio, pagina_config_mesas):
     permitir_desplazamiento(pagina_larga)
 
 
 acceso = DialogoAcceso(sesion, ventana)
 
 def cerrar_sesion():
+    if sesion.es_venta_libre() and sesion.usuario:
+        from hojas_venta_libre import cerrar
+        with sesion.conexion() as db: cerrar(db,sesion.usuario['id'])
     # Los pedidos abiertos se conservan al cambiar de empleado.
     control_espera.capa.hide()
     sesion.cerrar()
@@ -2604,6 +2849,10 @@ def cerrar_sesion():
 
 btn_cerrar_sesion.clicked.connect(cerrar_sesion)
 
+from cocina_ui import PaginaCocina
+pagina_cocina = PaginaCocina(sesion, cerrar_sesion)
+paginas.addWidget(pagina_cocina)
+
 # Pedir credenciales antes de mostrar cualquier contenido del restaurante.
 aplicar_permisos()
 if not sesion_restaurada:
@@ -2615,6 +2864,13 @@ aplicar_permisos()
 # Pantalla de espera automática tras dos minutos sin actividad.
 from pantalla_espera import ControlEspera
 control_espera = ControlEspera(ventana, segundos=120)
+
+def guardar_cierre_hoja_libre_al_salir():
+    if sesion.es_venta_libre() and sesion.usuario:
+        from hojas_venta_libre import cerrar
+        with sesion.conexion() as db:
+            cerrar(db, sesion.usuario['id'])
+app.aboutToQuit.connect(guardar_cierre_hoja_libre_al_salir)
 
 # Mostrar la aplicación
 ventana.showFullScreen()
