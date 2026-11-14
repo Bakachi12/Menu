@@ -4,7 +4,7 @@ from decimal import Decimal,ROUND_HALF_UP,InvalidOperation
 
 FORMAS_HOJA=('Efectivo','Yappy','Clave','Visa')
 
-def resumen_pagos_hoja(sesion,turno_id,filas=None):
+def resumen_pagos_hoja(sesion,turno_id,filas=None,*,incluir_cocina=False):
     if not sesion.usuario:raise PermissionError('Inicia sesión para consultar los cobros.')
     ambiguas=0
     contenido="productos" if filas is not None else "NULL"
@@ -34,6 +34,7 @@ def resumen_pagos_hoja(sesion,turno_id,filas=None):
                 if coincidencias==1:ventas.append((metodo,total,productos))
                 else:ambiguas+=1
     importes=dict.fromkeys(FORMAS_HOJA,0)
+    cocina={}
     claves={(f.get('nombre'),f.get('categoria')) for f in filas or [] if f.get('nombre') is not None}
     nombres={f['producto'] for f in filas or []}
     for metodo,total,productos in ventas:
@@ -44,6 +45,13 @@ def resumen_pagos_hoja(sesion,turno_id,filas=None):
                 raise ValueError('Una venta contiene productos inválidos.')
             importe_producto=0
             for p in lista:
+                if p.get('seccion')=='Cocina' and incluir_cocina:
+                    try:precio=round(float(p['precio'])*100)
+                    except (KeyError,ValueError,TypeError,OverflowError) as error:raise ValueError('Un plato contiene un precio inválido.') from error
+                    clave_plato=(p.get('nombre','Plato'),p.get('preparacion',''),p.get('acompanamiento',''),p.get('extra',''),precio)
+                    plato=cocina.setdefault(clave_plato,dict(nombre=clave_plato[0],preparacion=clave_plato[1],acompanamiento=clave_plato[2],extra=clave_plato[3],unidades=0,centimos=0))
+                    plato['unidades']+=1;plato['centimos']+=precio;importe_producto+=precio
+                    continue
                 if p.get('seccion','Bebidas')!='Bebidas':continue
                 clave=(p.get('nombre'),p.get('categoria','General'))
                 coincide=clave in claves if claves else f'{clave[0]} · {clave[1]}' in nombres
@@ -59,4 +67,4 @@ def resumen_pagos_hoja(sesion,turno_id,filas=None):
             raise ValueError('Un cobro contiene un importe inválido.') from error
         if not importe.is_finite():raise ValueError('Un cobro contiene un importe inválido.')
         importes[etiqueta]=importes.get(etiqueta,0)+int(importe.quantize(Decimal('1'),rounding=ROUND_HALF_UP))
-    return dict(importes=importes,total_centimos=sum(importes.values()),ambiguas=ambiguas)
+    return dict(importes=importes,total_centimos=sum(importes.values()),ambiguas=ambiguas,cocina=list(cocina.values()),cocina_centimos=sum(p['centimos'] for p in cocina.values()),cocina_unidades=sum(p['unidades'] for p in cocina.values()))

@@ -46,3 +46,16 @@ def reporte(sesion):
             hid,nombre,inicio,fin,producto,categoria,inicial,agregada,vendida,importe,saldo=fila
             resultado.append(dict(turno_id=-hid,asignacion_fecha=inicio,cierre_fecha=fin,cajero='Venta libre · '+nombre,estado='cerrado' if fin else 'activo',producto=producto+' · '+categoria,nombre=producto,categoria=categoria,recibida=inicial,agregada=agregada,vendida=vendida,dinero_centimos=importe,entregada=saldo if saldo is not None else inicial+agregada-vendida,faltante=None,sobrante=None))
     return resultado
+
+def cerrar_hoja_propia(sesion,hoja_id):
+    usuario=sesion.usuario
+    if not usuario or usuario.get('tipo')!='venta_libre':
+        raise PermissionError('Solo Venta libre puede cerrar su propia hoja.')
+    with sesion.conexion() as db:
+        preparar(db)
+        db.execute('BEGIN IMMEDIATE')
+        if not db.execute('SELECT 1 FROM hojas_venta_libre WHERE id=? AND usuario_id=? AND cierre IS NULL',(hoja_id,usuario['id'])).fetchone():
+            raise ValueError('La hoja ya está cerrada o pertenece a otro usuario.')
+        cerrar(db,usuario['id'])
+    sesion.inventario_libre_verificado=False
+    return hoja_id

@@ -74,3 +74,8 @@ class ResumenPagosTest(unittest.TestCase):
         resumen=resumen_pagos_hoja(self,1,filas)
         self.assertEqual(resumen['total_centimos'],1900)
         self.assertEqual(resumen['importes'],dict(Efectivo=200,Yappy=1700,Clave=0,Visa=0))
+        con_cocina=resumen_pagos_hoja(self,1,filas,incluir_cocina=True)
+        self.assertEqual(con_cocina['total_centimos'],4000)
+        self.assertEqual(con_cocina['cocina_centimos'],2100)
+        self.assertEqual(con_cocina['cocina_unidades'],2)
+        self.assertEqual(con_cocina['importes'],dict(Efectivo=1500,Yappy=1700,Clave=0,Visa=800))

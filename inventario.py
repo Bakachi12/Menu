@@ -1946,14 +1946,18 @@ class PaginaHojaInventarios(QWidget):
         """Abre una tabla modal dibujada dentro de la ventana principal."""
         from resumen_pagos import resumen_pagos_hoja
         try:
-            resumen=resumen_pagos_hoja(self.gestion.sesion,turno['turno_id'],filas)
+            resumen=resumen_pagos_hoja(self.gestion.sesion,turno['turno_id'],filas,incluir_cocina=True)
         except (ValueError,PermissionError,sqlite3.Error) as error:
             self.estado.setText(f'No se pudieron cargar los cobros: {error}')
             return
         self.estado.clear()
         if self.detalle is not None:
             self.detalle.close()
-        self.detalle = _DetalleHojaInventario(self.window(), turno, filas, resumen)
+        cierre=None
+        if (getattr(self,'al_cerrar_hoja',None) and turno['turno_id']<0 and turno['estado']=='activo'
+                and self.gestion.sesion.es_venta_libre()):
+            cierre=lambda:self.al_cerrar_hoja(-turno['turno_id'])
+        self.detalle = _DetalleHojaInventario(self.window(), turno, filas, resumen,cierre)
         self.detalle.show()
 
     def _vaciar_tarjetas(self):
@@ -2021,7 +2025,7 @@ class PaginaHojaInventarios(QWidget):
 
 class _DetalleHojaInventario(QWidget):
     """Ventana emergente integrada; bloquea solo el contenido de la aplicación."""
-    def __init__(self, parent, turno, filas, resumen=None):
+    def __init__(self, parent, turno, filas, resumen=None,al_cerrar_hoja=None):
         super().__init__(parent)
         self.ventana = parent
         self.contenido = parent.centralWidget()
@@ -2046,11 +2050,10 @@ class _DetalleHojaInventario(QWidget):
             QPushButton:hover { background: #79eaff; }
         """)
         exterior = QVBoxLayout(self)
-        exterior.setContentsMargins(24, 20, 24, 20)
-        exterior.addStretch(1)
+        exterior.setContentsMargins(12, 12, 12, 12)
         tarjeta = QFrame()
         tarjeta.setObjectName("TarjetaDetalleHoja")
-        tarjeta.setMaximumWidth(1500)
+        tarjeta.setMaximumWidth(16777215)
         interior = QVBoxLayout(tarjeta)
         interior.setContentsMargins(24, 20, 24, 22)
         interior.setSpacing(12)
@@ -2101,17 +2104,25 @@ class _DetalleHojaInventario(QWidget):
                 tabla.setItem(i, j, celda)
             tabla.setRowHeight(i, 52)
         tabla.setMinimumHeight(min(170, max(90, len(filas) * 52)))
-        tabla.setMaximumHeight(420)
+        tabla.setMaximumHeight(16777215)
         interior.addWidget(tabla, 1)
         if resumen is not None:
             from PySide6.QtGui import QColor
             importes=dict(resumen['importes'])
-            total_tabla=sum(f['dinero_centimos'] for f in filas)
+            cocina_importe=resumen.get('cocina_centimos',0)
+            cocina_unidades=resumen.get('cocina_unidades',0)
+            if cocina_unidades:
+                indice=tabla.rowCount();tabla.insertRow(indice)
+                for col,texto in ((0,'VENTAS DE COCINA · Resumen'),(3,str(cocina_unidades)),(4,f'B/. {cocina_importe/100:.2f}')):
+                    tabla.setItem(indice,col,QTableWidgetItem(texto))
+                tabla.setRowHeight(indice,42)
+            inicio_pagos=tabla.rowCount()
+            total_tabla=sum(f['dinero_centimos'] for f in filas)+cocina_importe
             diferencia=total_tabla-sum(importes.values())
             if diferencia:
                 importes['Sin conciliar' if diferencia>0 else 'Diferencia por revisar']=diferencia
-            tabla.setRowCount(len(filas)+len(importes)+1)
-            for indice,(metodo,importe) in enumerate(importes.items(),len(filas)):
+            tabla.setRowCount(inicio_pagos+len(importes)+1)
+            for indice,(metodo,importe) in enumerate(importes.items(),inicio_pagos):
                 tabla.setSpan(indice,0,1,3)
                 for col in range(8):
                     if col in (1,2):continue
@@ -2123,33 +2134,71 @@ class _DetalleHojaInventario(QWidget):
                 tabla.setRowHeight(indice,34)
             ultima=tabla.rowCount()-1
             tabla.setSpan(ultima,0,1,3)
-            for col,texto in ((0,'TOTAL VENDIDO'),(3,str(sum(f['vendida'] for f in filas))),(4,f'B/. {total_tabla/100:.2f}')):
+            for col,texto in ((0,'TOTAL VENDIDO'),(3,str(sum(f['vendida'] for f in filas)+cocina_unidades)),(4,f'B/. {total_tabla/100:.2f}')):
                 celda=QTableWidgetItem(texto)
                 fuente=celda.font();fuente.setBold(True);celda.setFont(fuente)
                 celda.setForeground(QColor('#79eaff'));celda.setBackground(QColor('#173653'))
                 if col:celda.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 tabla.setItem(ultima,col,celda)
             tabla.setRowHeight(ultima,42)
-            tabla.setMinimumHeight(min(420,max(90,parent.height()-250),sum(tabla.rowHeight(i) for i in range(tabla.rowCount()))+tabla.horizontalHeader().height()+6))
+            tabla.setMinimumHeight(min(max(90,parent.height()-220),sum(tabla.rowHeight(i) for i in range(tabla.rowCount()))+tabla.horizontalHeader().height()+6))
             if diferencia or resumen['ambiguas']:
-                aviso=QLabel('Los importes sin conciliar no tienen un cobro identificable. El total corresponde a los productos de esta hoja.')
+                aviso=QLabel('Los importes sin conciliar no tienen un cobro identificable. El total corresponde al inventario y la cocina de esta hoja.')
                 aviso.setWordWrap(True);aviso.setStyleSheet('color:#a8bad0; font-size:12px;')
                 interior.addWidget(aviso)
+        acciones=QHBoxLayout()
+        if resumen is not None:
+            cocina=QPushButton('Ver cocina detallada')
+            cocina.setEnabled(bool(resumen.get('cocina')))
+            cocina.clicked.connect(lambda:self.mostrar_cocina(resumen.get('cocina',[])))
+            acciones.addWidget(cocina)
+        if al_cerrar_hoja is not None:
+            cerrar_hoja=QPushButton('Cerrar hoja de inventario')
+            cerrar_hoja.clicked.connect(al_cerrar_hoja)
+            acciones.addWidget(cerrar_hoja)
+        acciones.addStretch(1)
         cerrar = QPushButton("Cerrar detalle")
         cerrar.setMinimumHeight(52)
         cerrar.clicked.connect(self.close)
-        interior.addWidget(cerrar, 0, Qt.AlignmentFlag.AlignRight)
-        fila = QHBoxLayout()
-        fila.addStretch(1)
-        fila.addWidget(tarjeta, 12)
-        fila.addStretch(1)
-        exterior.addLayout(fila, 5)
-        exterior.addStretch(1)
+        acciones.addWidget(cerrar)
+        interior.addLayout(acciones)
+        exterior.addWidget(tarjeta,1)
+        self.tabla_hoja=tabla
+        self.alturas_hoja=[tabla.rowHeight(i) for i in range(tabla.rowCount())]
         self.ventana.installEventFilter(self)
+
+    def ajustar_filas(self):
+        tabla=getattr(self,'tabla_hoja',None)
+        if tabla is None:return
+        disponible=max(1,tabla.viewport().height()-2)
+        escala=min(1,disponible/max(1,sum(self.alturas_hoja)))
+        for i,alto in enumerate(self.alturas_hoja):tabla.setRowHeight(i,max(32,int(alto*escala)))
+
+    def mostrar_cocina(self,platos):
+        from dialogos import DialogoIntegrado
+        dialogo=DialogoIntegrado(self.ventana);dialogo.setWindowTitle('Ventas de cocina detalladas')
+        dialogo.setStyleSheet(self.styleSheet()+'QDialog {background:#101b2e; color:#eaf3ff;}')
+        layout=QVBoxLayout(dialogo)
+        tabla=QTableWidget(len(platos),5)
+        tabla.setHorizontalHeaderLabels(['Plato','Preparación','Acompañamiento / Extra','Unidades','Importe B/.'])
+        tabla.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        tabla.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        tabla.verticalHeader().hide()
+        for i,p in enumerate(platos):
+            for j,texto in enumerate((p['nombre'],p['preparacion'], ' / '.join(x for x in (p['acompanamiento'],p['extra']) if x),str(p['unidades']),f"B/. {p['centimos']/100:.2f}")):
+                tabla.setItem(i,j,QTableWidgetItem(texto))
+        layout.addWidget(tabla)
+        self.hide()
+        try:dialogo.exec()
+        finally:
+            if isValid(self.ventana) and self.ventana.isVisible():
+                self.contenido.setEnabled(False);self.show();self.raise_()
 
     def showEvent(self, evento):
         self.contenido.setEnabled(False)
         super().showEvent(evento)
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(0,self.ajustar_filas)
 
     def closeEvent(self, evento):
         self.ventana.removeEventFilter(self)
@@ -2170,6 +2219,7 @@ class _DetalleHojaInventario(QWidget):
 
     def resizeEvent(self, evento):
         super().resizeEvent(evento)
+        self.ajustar_filas()
         if self.parentWidget():
             self.setGeometry(self.parentWidget().rect())
 

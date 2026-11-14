@@ -2264,6 +2264,38 @@ def abrir_cierre_desde_inicio():
     cierre.parentWidget().deleteLater()
 btn_cierre_desde_inicio.clicked.connect(abrir_cierre_desde_inicio)
 layout_inicio.addWidget(btn_cierre_desde_inicio)
+btn_cierre_libre=QPushButton('Cierre')
+btn_cierre_libre.setObjectName('CierreVentaLibre')
+btn_cierre_libre.setMinimumHeight(60)
+btn_cierre_libre.hide()
+layout_inicio.addWidget(btn_cierre_libre)
+
+def mostrar_hoja_libre(hoja_id=None):
+    if not sesion.es_venta_libre():return
+    abrir_hoja_inventarios()
+    filas=gestion_turnos.hoja_inventarios()
+    if hoja_id is None:
+        activas=[f for f in filas if f['estado']=='activo']
+        elegidas=activas or filas
+        if not elegidas:return
+        hoja_id=-max(elegidas,key=lambda f:abs(f['turno_id']))['turno_id']
+    detalle=[f for f in filas if f['turno_id']==-hoja_id]
+    if detalle:pagina_hoja_inventarios._abrir_detalle(detalle[0],detalle)
+
+def cerrar_hoja_libre(hoja_id):
+    from hojas_venta_libre import cerrar_hoja_propia
+    try:
+        cerrar_hoja_propia(sesion,hoja_id)
+    except (ValueError,PermissionError,sqlite3.Error) as error:
+        pagina_hoja_inventarios.estado.setText(str(error));return
+    if pagina_hoja_inventarios.detalle:pagina_hoja_inventarios.detalle.close()
+    guardar_sesion_restaurable()
+    aplicar_permisos()
+    mostrar_hoja_libre(hoja_id)
+
+btn_cierre_libre.clicked.connect(lambda checked=False:mostrar_hoja_libre())
+pagina_hoja_inventarios.al_cerrar_hoja=cerrar_hoja_libre
+
 paginas.addWidget(pagina_inicio)
 btn_menu_inicio = ventana.findChild(QPushButton, 'pushButton')
 
@@ -2601,7 +2633,7 @@ def proteger_navegacion(indice):
         return
     if sesion.es_venta_libre():
         if not sesion.inventario_libre_verificado:
-            paginas.setCurrentWidget(pagina_verificacion_libre)
+            if paginas.currentWidget() is not pagina_hoja_inventarios:paginas.setCurrentWidget(pagina_verificacion_libre)
         elif paginas.currentWidget() not in (
             pagina_inicio, pagina_mesas, pagina_clientes, pagina_pedido,
             pagina_cobro, pagina_historial, pagina_pedidos_table, pagina_hoja_inventarios
@@ -2616,6 +2648,7 @@ paginas.currentChanged.connect(proteger_navegacion)
 def aplicar_permisos():
     """Admin usa el menú de gestión; empleados operan según su turno."""
     admin = sesion.es_admin()
+    btn_cierre_libre.setVisible(sesion.es_venta_libre())
     rol = sesion.usuario.get('rol') if sesion.usuario else None
     if rol in ('mesero','cocinero'):
         for boton in botones_navegacion:
@@ -2673,6 +2706,7 @@ def aplicar_permisos():
         if sesion.usuario and not admin and not venta_libre else None
     )
     turno_para_cierre = gestion_turnos.turno_abierto() if admin else turno_actual_cajero
+    btn_cierre_libre.setVisible(venta_libre)
     btn_cierre_desde_inicio.setVisible(bool(turno_para_cierre and turno_para_cierre['estado'] == 'activo'))
     puede_agregar_inventario = bool(
         venta_libre and sesion.inventario_libre_verificado

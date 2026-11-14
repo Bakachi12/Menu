@@ -73,3 +73,12 @@ en el restaurante; este entorno no tiene acceso a esa red ni a su base real.
 ## Durante el servicio
 
 Las notas y cantidades corresponden al borrador de cada mesa y cliente. **Ver pedido** muestra el total y lleva al resumen. Las cuentas y solicitudes se consultan periódicamente. Para volver a cargar el catálogo y sus fotos, pulsa **Actualizar**. El nombre de la tablet se configura una vez en caja. Admin puede retirar su acceso desde **PedidosTable → Configuración**. Al pasar de la versión antigua a esta, genera un enlace individual la primera vez.
+
+
+## Envío directo de Venta libre
+
+Si la PC y PedidosTable tienen iniciada la misma cuenta de Venta libre (mismo usuario), y su inventario está verificado, los pedidos se incorporan automáticamente a la cuenta. La PC debe permanecer encendida y conectada. Otros usuarios y perfiles conservan la aprobación manual. Se comprueban catálogo, disponibilidad y destino antes de añadir; los reintentos no duplican productos.
+
+## Cierre de hoja sin salir
+
+En Inicio, Venta libre dispone de **Cierre**. Abre su hoja actual para revisarla; **Cerrar hoja de inventario** la finaliza manteniendo la sesión iniciada. Para continuar vendiendo se verifica inventario y se abre una nueva hoja. Las hojas incluyen el resumen de cocina y el botón para consultar sus platos detallados.

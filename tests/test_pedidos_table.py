@@ -280,5 +280,51 @@ class TestPedidosTable(unittest.TestCase):
             urlopen(Request(url+'/api/cuentas', headers=headers))
 
 
+
+    def test_venta_libre_same_user_is_added_automatically_once(self):
+        self.sesion.usuario=dict(id=7,rol='mesas',tipo='venta_libre')
+        datos=self.datos()
+        id_=self.servicio.enviar(datos,dict(id=7,usuario='alberto'))['id']
+        incorporadas=self.servicio.resolver_directas(self.sesion,self.turnos)
+        self.assertEqual(len(incorporadas),1)
+        self.assertEqual(len(incorporadas[0][1]),2)
+        self.assertEqual(self.servicio.estado(id_)['estado'],'aceptada')
+        self.servicio.enviar(datos,dict(id=7,usuario='alberto'))
+        self.assertEqual(self.servicio.resolver_directas(self.sesion,self.turnos),[])
+
+    def test_other_user_and_normal_profiles_still_need_approval(self):
+        self.sesion.usuario=dict(id=7,rol='mesas',tipo='venta_libre')
+        id_=self.servicio.enviar(self.datos(emisor_id=7),dict(id=8,usuario='otro'))['id']
+        self.assertEqual(self.servicio.resolver_directas(self.sesion,self.turnos),[])
+        self.assertEqual(self.servicio.estado(id_)['estado'],'pendiente')
+        self.sesion.usuario=dict(id=8,rol='mesas',tipo='normal')
+        self.assertEqual(self.servicio.resolver_directas(self.sesion,self.turnos),[])
+
+    def test_auto_send_checks_inventory_and_rejects_changed_prices(self):
+        self.sesion.usuario=dict(id=7,rol='mesas',tipo='venta_libre')
+        id_=self.servicio.enviar(self.datos(),dict(id=7,usuario='alberto'))['id']
+        class Bloqueado:
+            def exigir_turno_activo(self):raise PermissionError('Inventario sin verificar')
+        self.assertEqual(self.servicio.resolver_directas(self.sesion,Bloqueado()),[])
+        self.assertEqual(self.servicio.estado(id_)['estado'],'pendiente')
+        with self.servicio.conexion() as db:db.execute('UPDATE productos SET precio_centimos=300 WHERE id=1')
+        self.assertEqual(self.servicio.resolver_directas(self.sesion,self.turnos),[])
+        self.assertEqual(self.servicio.estado(id_)['estado'],'rechazada')
+        with self.servicio.conexion() as db:self.assertEqual(db.execute('SELECT COUNT(*) FROM pedidos_abiertos').fetchone()[0],0)
+
+    def test_http_direct_mode_follows_current_pc_account(self):
+        empleado=dict(id=7,usuario='alberto',rol='mesas',tipo='venta_libre')
+        self.sesion.usuario=empleado.copy()
+        servidor=ServidorTable(self.servicio,lambda u,p:empleado,lambda e:self.sesion.usuario['id']==e['id'])
+        puerto=servidor.iniciar(host='127.0.0.1',puerto=0);self.addCleanup(servidor.detener)
+        url=f'http://127.0.0.1:{puerto}'
+        clave=self.servicio.vincular('Tablet')
+        headers={'Authorization':'Bearer '+clave,'Content-Type':'application/json'}
+        with urlopen(Request(url+'/api/login',headers=headers,data=json.dumps(dict(usuario='alberto',password='prueba')).encode())) as r:headers['X-Sesion']=json.load(r)['token']
+        with urlopen(Request(url+'/api/resumen',headers=headers)) as r:self.assertTrue(json.load(r)['envio_directo'])
+        self.sesion.usuario=dict(id=8)
+        with urlopen(Request(url+'/api/cuentas',headers=headers)) as r:self.assertFalse(json.load(r)['envio_directo'])
+
+
 if __name__ == '__main__':
     unittest.main()

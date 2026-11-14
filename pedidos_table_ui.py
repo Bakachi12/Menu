@@ -45,7 +45,7 @@ class PaginaPedidosTable(QWidget):
         self.ventana = ventana
         self._cerrando = False
         self.solicitudes = SolicitudesTable(sesion.ruta)
-        self.servidor = ServidorTable(self.solicitudes, sesion.identificar)
+        self.servidor = ServidorTable(self.solicitudes, sesion.identificar, self.envio_directo)
         self.ajustes_conexion = QSettings("Bakachi12", "Menu")
         self.solicitud_actual = None
         self.setStyleSheet(FORMULARIOS)
@@ -63,7 +63,7 @@ class PaginaPedidosTable(QWidget):
         self.tipo_enlace = 'mesas'
         self.clave_nueva = ''
         self.ayuda = QLabel('Conecta los dispositivos del personal al mismo Wi-Fi de esta PC. '
-                            'Cada solicitud necesita la aprobación de una sesión habilitada para vender. '
+                            'Los pedidos requieren aprobación, salvo los enviados por el mismo usuario de Venta libre conectado en esta PC. '
                             'Los pedidos nuevos aparecen en una ventana central para aceptar o rechazar.')
         self.ayuda.setWordWrap(True)
         opciones.addWidget(self.ayuda)
@@ -463,11 +463,19 @@ class PaginaPedidosTable(QWidget):
         except (PermissionError, OSError) as e:
             self.estado_configuracion.setText(f'No se pudo cambiar la conexión: {e}')
 
+    def envio_directo(self,empleado):
+        usuario=self.sesion.usuario
+        return bool(usuario and empleado and usuario.get('tipo')=='venta_libre'
+                    and empleado.get('tipo')=='venta_libre' and usuario['id']==empleado['id']
+                    and self.sesion.inventario_libre_verificado)
+
     def actualizar(self):
         if not self.sesion.usuario:
             self.lista.clear()
             return
         try:
+            for mesa,cuenta in self.solicitudes.resolver_directas(self.sesion,self.turnos):
+                self.al_aceptar(mesa,cuenta)
             pendientes = self.solicitudes.listar()
             self.boton.setText(f'PedidosTable ({len(pendientes)})')
             self._mostrar_siguiente_pedido(pendientes)

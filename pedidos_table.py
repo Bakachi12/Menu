@@ -200,7 +200,23 @@ class SolicitudesTable:
                 raise ValueError('Solicitud no encontrada.')
             return dict(fila)
 
-    def resolver(self, identificador, aceptar, sesion, turnos):
+    def resolver_directas(self,sesion,turnos):
+        usuario=sesion.usuario
+        if not usuario or usuario.get('tipo')!='venta_libre':return []
+        incorporadas=[]
+        for solicitud in self.listar():
+            if solicitud['emisor_id']!=usuario['id']:continue
+            try:
+                incorporadas.append(self.resolver(solicitud['id'],True,sesion,turnos,automatico=True))
+            except PermissionError:
+                break
+            except ValueError:
+                # A stale destination/catalogue cannot silently change a bill.
+                try:self.resolver(solicitud['id'],False,sesion,turnos,automatico=True)
+                except (ValueError,PermissionError):pass
+        return incorporadas
+
+    def resolver(self, identificador, aceptar, sesion, turnos, *, automatico=False):
         # Se llama exclusivamente desde el hilo de Qt, usando la sesión real.
         turnos.exigir_turno_activo()
         with self.conexion() as db:
@@ -208,6 +224,12 @@ class SolicitudesTable:
             solicitud = db.execute('SELECT * FROM solicitudes_table WHERE id = ?', (identificador,)).fetchone()
             if not solicitud or solicitud['estado'] != 'pendiente':
                 raise ValueError('La solicitud ya fue revisada.')
+            if automatico:
+                usuario=sesion.usuario
+                perfil=sesion.perfil(usuario['id']) if usuario and hasattr(sesion,'perfil') else usuario
+                if (not usuario or usuario.get('tipo')!='venta_libre' or not perfil
+                        or perfil.get('tipo')!='venta_libre' or solicitud['emisor_id']!=usuario['id']):
+                    raise PermissionError('El envío directo requiere el mismo usuario de Venta libre en PC y tablet.')
             cuenta = None
             if aceptar:
                 mesa, cliente = solicitud['mesa'], solicitud['cliente_id']
@@ -233,7 +255,8 @@ class SolicitudesTable:
 
 
 class ServidorTable:
-    def __init__(self, solicitudes, identificar):
+    def __init__(self, solicitudes, identificar, envio_directo=None):
+        self.envio_directo=envio_directo
         self.identificar = identificar
         self.solicitudes = solicitudes
         self.http = None
@@ -242,6 +265,7 @@ class ServidorTable:
         if self.http:
             return self.http.server_port
         servicio = self.solicitudes
+        envio_directo=self.envio_directo
         pagina = Path(__file__).with_name('pedidos_table.html').read_bytes()
         fondo = Path(__file__).with_name('fondo_bar.png').read_bytes()
 
@@ -334,9 +358,13 @@ class ServidorTable:
                     return self.responder(401, dict(error='Inicia sesión de nuevo o revisa el vínculo con la caja.', vinculo_invalido=not self.enlace_valido()))
                 try:
                     if ruta == '/api/cuentas':
-                        return self.responder(200, servicio.resumen(False))
+                        resultado=servicio.resumen(False)
+                        resultado['envio_directo']=bool(envio_directo and envio_directo(self.empleado))
+                        return self.responder(200,resultado)
                     if ruta == '/api/resumen':
-                        return self.responder(200, servicio.resumen())
+                        resultado=servicio.resumen()
+                        resultado['envio_directo']=bool(envio_directo and envio_directo(self.empleado))
+                        return self.responder(200,resultado)
                     if ruta.startswith('/api/solicitudes/'):
                         return self.responder(200, servicio.estado(ruta.rsplit('/', 1)[-1]))
                     if ruta.startswith('/api/imagen/'):
@@ -421,7 +449,9 @@ class ServidorTable:
                         return self.responder(200, dict(token=token, usuario=empleado['usuario']))
                     if isinstance(datos, dict):
                         datos['dispositivo'] = self.terminal[1]
-                    self.responder(200, servicio.enviar(datos, self.empleado))
+                    resultado=servicio.enviar(datos,self.empleado)
+                    resultado['envio_directo']=bool(envio_directo and envio_directo(self.empleado))
+                    self.responder(200,resultado)
                 except (ValueError, UnicodeDecodeError) as e:
                     self.responder(400, dict(error=str(e)))
                 except sqlite3.Error:

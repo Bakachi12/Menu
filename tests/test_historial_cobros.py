@@ -97,3 +97,16 @@ class HistorialCobros(TestCase):
         resumen=resumen_pagos_hoja(self.sesion,-hoja)
         self.assertEqual(resumen['importes']['Visa'],650)
         self.assertEqual(resumen['total_centimos'],650)
+
+    def test_free_inventory_can_close_while_user_stays_logged_in(self):
+        from hojas_venta_libre import abrir,cerrar_hoja_propia
+        self.sesion.usuario=dict(id=10,nombre='Alberto',rol='mesas',tipo='venta_libre')
+        self.sesion.inventario_libre_verificado=True
+        with self.sesion.conexion() as db:
+            abrir(db,self.sesion.usuario,{1:10},{1:('Café','Bebidas',10)})
+            hoja=db.execute('SELECT id FROM hojas_venta_libre WHERE cierre IS NULL').fetchone()[0]
+        cerrar_hoja_propia(self.sesion,hoja)
+        self.assertEqual(self.sesion.usuario['nombre'],'Alberto')
+        self.assertFalse(self.sesion.inventario_libre_verificado)
+        with self.sesion.conexion() as db:self.assertIsNotNone(db.execute('SELECT cierre FROM hojas_venta_libre WHERE id=?',(hoja,)).fetchone()[0])
+        with self.assertRaises(ValueError):cerrar_hoja_propia(self.sesion,hoja)

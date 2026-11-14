@@ -35,3 +35,18 @@ class HojasInventarioUITest(unittest.TestCase):
         self.assertEqual(tabla.item(tabla.rowCount()-1,4).text(),'B/. 19.00')
         self.assertEqual([tabla.item(i,3).text() for i in range(1,5)],['Efectivo','Yappy','Clave','Visa'])
         detalle.close();w.deleteLater();self.app.processEvents()
+
+    def test_large_sheet_includes_kitchen_summary_and_full_total(self):
+        w=QMainWindow();w.setCentralWidget(QWidget());w.resize(1920,1080);w.show()
+        turno=dict(turno_id=1,cajero='Alberto',asignacion_fecha='2026-11-14',cierre_fecha='2026-11-14',estado='cerrado')
+        filas=[dict(turno,producto='Cristal · Bebidas',recibida=20,agregada=0,vendida=19,dinero_centimos=1900,entregada=1,faltante=0,sobrante=0)]
+        resumen=dict(importes=dict(Efectivo=1500,Yappy=1700,Clave=0,Visa=800),total_centimos=4000,ambiguas=0,cocina_centimos=2100,cocina_unidades=2,cocina=[dict(nombre='Hamburguesa',preparacion='',acompanamiento='',extra='',unidades=2,centimos=2100)])
+        detalle=_DetalleHojaInventario(w,turno,filas,resumen);detalle.show();self.app.processEvents();detalle.ajustar_filas()
+        tabla=detalle.tabla_hoja
+        self.assertIn('COCINA',tabla.item(1,0).text())
+        self.assertEqual(tabla.item(1,4).text(),'B/. 21.00')
+        self.assertEqual(tabla.item(tabla.rowCount()-1,4).text(),'B/. 40.00')
+        self.assertEqual(tabla.verticalScrollBar().maximum(),0)
+        self.assertGreater(detalle.findChild(QWidget,'TarjetaDetalleHoja').width(),1800)
+        self.assertTrue(next(b for b in detalle.findChildren(QPushButton) if b.text()=='Ver cocina detallada').isEnabled())
+        detalle.close();w.close();w.deleteLater();self.app.processEvents()
