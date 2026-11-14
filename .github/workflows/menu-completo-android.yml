@@ -38,7 +38,7 @@ jobs:
       - name: Android SDK y NDK
         run: sdkmanager 'platform-tools' 'platforms;android-35' 'build-tools;35.0.0' 'ndk;28.2.13676358'
       - name: Pruebas de la aplicación completa
-        run: python -m unittest discover -s tests -p 'test_*.py'
+        run: python tools/android/run_tests.py
       - name: Compilar APK autónomo ARM64
         run: |
           set -o pipefail
