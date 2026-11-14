@@ -1,0 +1,60 @@
+name: Menu completo Android
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/menu-completo-android.yml'
+      - 'tools/android/**'
+permissions:
+  contents: read
+concurrency:
+  group: menu-android-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      QT_QPA_PLATFORM: offscreen
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Dependencias de compilación
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential git zip unzip autoconf automake libtool pkg-config cmake ninja-build libffi-dev libssl-dev zlib1g-dev libncurses-dev libtinfo6 libgl1 libegl1 libxkbcommon0
+          python -m pip install --upgrade pip
+          python -m pip install PySide6==6.12.0 buildozer==1.6.0 cython==0.29.33 setuptools
+      - name: Android SDK y NDK
+        run: sdkmanager 'platform-tools' 'platforms;android-35' 'build-tools;35.0.0' 'ndk;28.2.13676358'
+      - name: Pruebas de la aplicación completa
+        run: python -m unittest discover -s tests -p 'test_*.py'
+      - name: Compilar APK autónomo ARM64
+        run: |
+          set -o pipefail
+          python tools/android/build_menu_android.py --arch aarch64 --destination "$RUNNER_TEMP/menu-android" --sdk "$ANDROID_HOME" --ndk "$ANDROID_HOME/ndk/28.2.13676358" 2>&1 | tee android-build.log
+      - name: Guardar APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tisamar-Menu-Android-ARM64
+          path: apk-output/*.apk
+          if-no-files-found: error
+          retention-days: 30
+      - name: Guardar diagnóstico de compilación
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Diagnostico-Menu-Android
+          path: |
+            android-build.log
+            ${{ runner.temp }}/menu-android/buildozer.spec
+            ${{ runner.temp }}/menu-android/pysidedeploy.spec
+          if-no-files-found: ignore
