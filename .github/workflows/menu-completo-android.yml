@@ -14,6 +14,10 @@ jobs:
   apk:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [aarch64, x86_64]
     env:
       QT_QPA_PLATFORM: offscreen
       PYTHONUNBUFFERED: '1'
@@ -39,22 +43,61 @@ jobs:
         run: sdkmanager 'platform-tools' 'platforms;android-35' 'build-tools;35.0.0' 'ndk;28.2.13676358'
       - name: Pruebas de la aplicación completa
         run: QT_DEBUG_PLUGINS=1 QT_QPA_PLATFORM=xcb xvfb-run -a python -X faulthandler tools/android/run_tests.py
-      - name: Compilar APK autónomo ARM64
+      - name: Compilar APK autónomo ${{ matrix.arch }}
         run: |
           set -o pipefail
-          python tools/android/build_menu_android.py --arch aarch64 --destination "$RUNNER_TEMP/menu-android" --sdk "$ANDROID_HOME" --ndk "$ANDROID_HOME/ndk/28.2.13676358" 2>&1 | tee android-build.log
+          python tools/android/build_menu_android.py --arch ${{ matrix.arch }} --destination "$RUNNER_TEMP/menu-android" --sdk "$ANDROID_HOME" --ndk "$ANDROID_HOME/ndk/28.2.13676358" 2>&1 | tee android-build.log
       - name: Guardar APK
         uses: actions/upload-artifact@v4
         with:
-          name: Tisamar-Menu-Android-ARM64
+          name: Tisamar-Menu-Android-${{ matrix.arch }}
           path: apk-output/*.apk
           if-no-files-found: error
           retention-days: 30
+      - name: Permisos para emulador
+        if: matrix.arch == 'x86_64'
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Probar arranque en teléfono Android
+        if: matrix.arch == 'x86_64'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: default
+          profile: pixel_7
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            adb install -r apk-output/Tisamar-Menu-x86_64-debug.apk
+            adb logcat -c
+            adb shell monkey -p pa.tisamar.menu 1
+            sleep 20
+            adb shell pidof pa.tisamar.menu
+            adb exec-out screencap -p > android-login.png
+            adb shell input text Admin
+            adb shell input keyevent 66
+            sleep 8
+            adb shell pidof pa.tisamar.menu
+            adb exec-out screencap -p > android-inicio.png
+            adb logcat -d > android-runtime.log
+      - name: Guardar pruebas en emulador
+        if: always() && matrix.arch == 'x86_64'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Prueba-Menu-Android
+          path: |
+            android-login.png
+            android-inicio.png
+            android-runtime.log
+          if-no-files-found: ignore
       - name: Guardar diagnóstico de compilación
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Diagnostico-Menu-Android
+          name: Diagnostico-Menu-Android-${{ matrix.arch }}
           path: |
             android-build.log
             ${{ runner.temp }}/menu-android/buildozer.spec
