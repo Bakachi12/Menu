@@ -4,7 +4,7 @@ os.environ.setdefault('QT_QPA_PLATFORM','offscreen')
 from pathlib import Path
 import unittest
 from unittest.mock import patch
-from PySide6.QtWidgets import QApplication,QWidget,QVBoxLayout,QStackedWidget,QLabel,QSplitter,QListWidget
+from PySide6.QtWidgets import QApplication,QWidget,QVBoxLayout,QStackedWidget,QLabel,QSplitter,QListWidget,QPushButton
 from PySide6.QtCore import Qt
 from vista_pedidos import cargar_pantalla
 from interfaz_adaptable import InterfazAdaptable,medidas_dialogo
@@ -33,6 +33,17 @@ class AndroidLayoutTest(unittest.TestCase):
         self.w.resize(w,h);self.app.processEvents();self.adapter.aplicar();self.app.processEvents()
         self.assertLessEqual(self.w.width(),w)
         self.assertLessEqual(self.w.height(),h)
+
+    def test_menu_returns_from_orders_and_reserves_navigation_height(self):
+        self.resize(412,915)
+        boton=next(b for b in self.adapter.panel.findChildren(QPushButton) if b.text()=='Inicio')
+        boton.clicked.connect(lambda: self.pages.setCurrentWidget(self.adapter.inicio))
+        boton.show()
+        self.adapter.aplicar()
+        self.assertGreaterEqual(self.adapter.panel.minimumHeight(),164)
+        self.assertTrue(self.adapter.menu.isVisible())
+        self.adapter.menu.click()
+        self.assertIs(self.pages.currentWidget(),self.adapter.inicio)
 
     def test_phone_portrait_keeps_products_and_compact_summary(self):
         self.resize(412,915)

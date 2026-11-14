@@ -1,12 +1,14 @@
 """Responsive Qt layouts for phones, tablets and desktop windows."""
 import os,sys
-from PySide6.QtCore import QObject,QTimer,Qt
+from PySide6.QtCore import QObject,QTimer,Qt,QSysInfo
 from PySide6.QtWidgets import (QApplication,QWidget,QScrollArea,QVBoxLayout,QLayout,
                              QSizePolicy,QSplitter,QListWidget,QLabel,QPushButton)
 from shiboken6 import isValid
 
 def es_android():
-    return sys.platform=='android' or 'ANDROID_ARGUMENT' in os.environ or os.environ.get('MENU_ANDROID_TEST')=='1'
+    return (sys.platform=='android' or hasattr(sys,'getandroidapilevel')
+            or QSysInfo.productType()=='android' or 'ANDROID_ARGUMENT' in os.environ
+            or os.environ.get('MENU_ANDROID_TEST')=='1')
 
 def medidas_dialogo(ventana,ancho=660,alto=620):
     margen=8 if es_android() else 24
@@ -32,15 +34,36 @@ class InterfazAdaptable(QObject):
         self.ventana.centralWidget().layout().setSizeConstraint(QLayout.SizeConstraint.SetNoConstraint)
         titulo.setMinimumWidth(0);titulo.setWordWrap(True)
         titulo.setSizePolicy(QSizePolicy.Policy.Ignored,QSizePolicy.Policy.Preferred)
+        # A phone must always expose a way back to the complete navigation.
+        self.menu=QPushButton('Menú',ventana)
+        self.menu.setObjectName('btnMenuAndroid')
+        self.menu.setMinimumSize(96,48)
+        self.menu.clicked.connect(self.abrir_menu)
+        (titulo.parentWidget().layout() if titulo.parentWidget() else ventana.centralWidget().layout()).insertWidget(0,self.menu)
         self.temporizador=QTimer(self);self.temporizador.setInterval(250)
         self.temporizador.timeout.connect(self.aplicar)
         QApplication.instance().aboutToQuit.connect(self.temporizador.stop)
         self.aplicar();self.temporizador.start()
 
+    def abrir_menu(self):
+        for boton in self.panel.findChildren(QPushButton):
+            if boton.text()=='Inicio' and boton.isEnabled():
+                boton.click()
+                return
+        self.paginas.setCurrentWidget(self.inicio)
+
     def aplicar(self):
         if not isValid(self.ventana):return
         w,h=self.ventana.width(),self.ventana.height()
         telefono=w<760 or h<500
+        self.menu.setVisible(self.paginas.isEnabled())
+        if telefono and self.en_inicio:
+            # The outer Inicio scroll cannot infer the height of a nested scroll.
+            # Reserve enough space for every permitted navigation action.
+            botones=[b for b in self.panel.findChildren(QPushButton) if not b.isHidden()]
+            self.panel.setMinimumHeight(sum(max(64,b.sizeHint().height()) for b in botones)+100)
+        elif not telefono:
+            self.panel.setMinimumHeight(0)
         if telefono!=self.ultimo:
             self.ultimo=telefono
             for boton in self.inicio.findChildren(QPushButton):

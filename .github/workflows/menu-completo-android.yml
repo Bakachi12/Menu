@@ -77,8 +77,12 @@ jobs:
             sleep 20
             adb shell pidof pa.tisamar.menu
             adb exec-out screencap -p > android-login.png
+            adb shell input tap 920 640
+            adb shell input tap 400 1470
             adb shell input text Admin
             adb shell input keyevent 66
+            sleep 8
+            adb shell input tap 500 1720
             sleep 8
             adb shell pidof pa.tisamar.menu
             adb exec-out screencap -p > android-inicio.png
