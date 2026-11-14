@@ -8,7 +8,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: menu-android-${{ github.ref }}
+  group: menu-android-${{ github.sha }}
   cancel-in-progress: true
 jobs:
   apk:

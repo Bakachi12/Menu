@@ -388,6 +388,8 @@ def personalizar_plato(parent, producto, acompanamientos, recargos):
         grupo = QButtonGroup(dialogo)
         grupo.setExclusive(campo == 'acompanamiento' and limite_lados == 1)
         grupos.append(grupo)
+        from interfaz_adaptable import es_android
+        columnas_opciones = 1 if es_android() and parent.window().width() < 600 else 2
         for indice, valor in enumerate(valores):
             cargo_opcion = cargos_preparacion.get(valor, 0) if campo == 'preparacion' else 0
             boton = QPushButton(valor + (f' (+B/.{cargo_opcion / 100:.2f})' if cargo_opcion else ''))
@@ -395,7 +397,7 @@ def personalizar_plato(parent, producto, acompanamientos, recargos):
             boton.setCheckable(True)
             boton.setProperty('opcionPlato', campo)
             grupo.addButton(boton)
-            rejilla.addWidget(boton, indice // 2, indice % 2)
+            rejilla.addWidget(boton, indice // columnas_opciones, indice % columnas_opciones)
             boton.clicked.connect(lambda checked=False, v=valor: elegir(campo, v))
         caja.addLayout(rejilla)
         caja.addStretch()
