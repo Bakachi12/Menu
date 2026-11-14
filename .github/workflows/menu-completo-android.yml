@@ -32,13 +32,13 @@ jobs:
       - name: Dependencias de compilación
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential git zip unzip autoconf automake libtool pkg-config cmake ninja-build libffi-dev libssl-dev zlib1g-dev libncurses-dev libtinfo6 libgl1 libegl1 libxkbcommon0 xvfb libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-render-util0 libxkbcommon-x11-0
+          sudo apt-get install -y build-essential git zip unzip autoconf automake libtool pkg-config cmake ninja-build libffi-dev libssl-dev zlib1g-dev libncurses-dev libtinfo6 libgl1 libegl1 libxkbcommon0 xvfb libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-render-util0 libxkbcommon-x11-0 libxcb-xinput0 libxcb-xinerama0 libxcb-util1 libx11-xcb1 libxcb-shape0 libxcb-xfixes0 libxcb-randr0 libxcb-sync1
           python -m pip install --upgrade pip
           python -m pip install PySide6==6.12.0 buildozer==1.6.0 cython==0.29.33 setuptools jinja2 pkginfo tqdm
       - name: Android SDK y NDK
         run: sdkmanager 'platform-tools' 'platforms;android-35' 'build-tools;35.0.0' 'ndk;28.2.13676358'
       - name: Pruebas de la aplicación completa
-        run: QT_QPA_PLATFORM=xcb xvfb-run -a python -X faulthandler tools/android/run_tests.py
+        run: QT_DEBUG_PLUGINS=1 QT_QPA_PLATFORM=xcb xvfb-run -a python -X faulthandler tools/android/run_tests.py
       - name: Compilar APK autónomo ARM64
         run: |
           set -o pipefail
