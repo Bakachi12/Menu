@@ -6,3 +6,9 @@ __pycache__/
 build/
 dist/
 Menu.spec
+
+*.apk
+*.aab
+apk-output/
+.buildozer/
+deployment/
