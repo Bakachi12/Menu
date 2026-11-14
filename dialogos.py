@@ -255,11 +255,11 @@ class EditorNombreCliente(EditorNombreMesa):
         self.identificador = None
         self.setObjectName('EditorNombreCliente')
         self.titulo.setText('Agregar cliente')
-        self.descripcion.setText('Escribe su nombre. Después toca la mesa donde se sentará.')
+        self.descripcion.setText('Escribe su nombre y guarda el cliente. Después puedes elegir Barra o Añadir a mesa.')
         self.campo.setPlaceholderText('Nombre del cliente')
         self.campo.setMaxLength(80)
         self.campo.setMinimumHeight(56)
-        self.guardar_boton.setText('Elegir mesa')
+        self.guardar_boton.setText('Guardar')
         self.guardar_boton.setMinimumHeight(56)
         self.cancelar_boton.setMinimumHeight(56)
 
