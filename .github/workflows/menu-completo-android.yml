@@ -32,7 +32,7 @@ jobs:
       - name: Dependencias de compilación
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential git zip unzip autoconf automake libtool pkg-config cmake ninja-build libffi-dev libssl-dev zlib1g-dev libncurses-dev libtinfo6 libgl1 libegl1 libxkbcommon0 xvfb libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-render-util0 libxkbcommon-x11-0 libxcb-xinput0 libxcb-xinerama0 libxcb-util1 libx11-xcb1 libxcb-shape0 libxcb-xfixes0 libxcb-randr0 libxcb-sync1
+          sudo apt-get install -y build-essential git zip unzip autoconf automake libtool libtool-bin libltdl-dev pkg-config cmake ninja-build libffi-dev libssl-dev zlib1g-dev libncurses-dev libtinfo6 libgl1 libegl1 libxkbcommon0 xvfb libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-render-util0 libxkbcommon-x11-0 libxcb-xinput0 libxcb-xinerama0 libxcb-util1 libx11-xcb1 libxcb-shape0 libxcb-xfixes0 libxcb-randr0 libxcb-sync1
           python -m pip install --upgrade pip
           python -m pip install PySide6==6.12.0 buildozer==1.6.0 cython==0.29.33 setuptools jinja2 pkginfo tqdm
       - name: Android SDK y NDK
