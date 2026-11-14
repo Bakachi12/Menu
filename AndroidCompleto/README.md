@@ -1,11 +1,11 @@
 # Android completo de Tisamar Menu
 
-La versión Android queda por ahora en **0.1.6**, horizontal, con barra lateral y datos locales.
+La versión Android queda por ahora en **0.1.7**, horizontal, con barra lateral y datos locales.
 Esta carpeta reúne su entrega y sus herramientas dentro del proyecto de PC.
 
 ## Contenido
 
-- `APK/Tisamar-Menu-Android-0.1.6-Barra-Lateral.apk`: APK actual, copiado y verificado en esta PC. Los APK se conservan localmente y no se suben a Git.
+- `APK/Tisamar-Menu-Android-0.1.7-Pantallas.apk`: APK actual, copiado y verificado en esta PC. Los APK se conservan localmente y no se suben a Git.
 - `herramientas/build_menu_android.py`: prepara una copia temporal del código compartido y compila Android en GitHub Actions.
 - `herramientas/run_tests.py`: ejecuta las pruebas compartidas desde la raíz de Menu.
 - `herramientas/qa_prepare_login.py`: automatización exclusiva para la base de pruebas del emulador; no se incluye en el APK distribuido.
@@ -15,7 +15,7 @@ Esta carpeta reúne su entrega y sus herramientas dentro del proyecto de PC.
 
 El código común sigue en la raíz de `Menu`: `Main.py`, `clientes.py`, `inventario.py`, `usuarios.py`, `vista_pedidos.py`, `estilos.py`, pantallas `.ui` y demás módulos.
 No hay una segunda copia independiente de ese código en esta carpeta. Cada compilación Android toma la revisión actual del proyecto.
-`interfaz_adaptable.py` mantiene las diferencias de distribución para Android, sin aplicar esos ajustes a Windows.
+`interfaz_adaptable.py` y `contenido_adaptable.py` mantienen las diferencias de distribución para Android, sin aplicar esos ajustes a Windows.
 
 Los datos de Windows y Android son independientes: compartir código no sincroniza usuarios, productos, cuentas ni inventarios.
 La base `ventas.db` de la PC no se copia ni se empaqueta en el APK.
@@ -36,6 +36,10 @@ La carpeta `android/` anterior corresponde a la terminal PedidosTable conectada 
 
 ## Comprobación de la versión actual
 
-Código de la versión: `82f84d3`. Compilación: https://github.com/Bakachi12/Menu/actions/runs/43583018714
-34 pruebas correctas. En emulador Android se comprobó el acceso Admin y que Inicio no necesita scroll.
+Código de la versión: `0ad7cc7`. Compilación: https://github.com/Bakachi12/Menu/actions/runs/43585796042
+36 pruebas correctas. En emulador Android se comprobó el acceso Admin, Inicio y las ocho pantallas principales sin scroll del formulario completo. Las listas largas conservan su desplazamiento interno.
 También se comprobó la distribución a 800×360, 915×412 y 1280×800. Falta validar los flujos completos en una tablet física.
+
+## Cambios de la versión 0.1.7
+
+Medidas compartidas para las páginas Android y emergentes del tamaño de la ventana. Productos, usuarios y ficha del cliente utilizan columnas; Inventario separa sus secciones en pestañas. Se revisaron también barra, cuentas abiertas y preparaciones con sus acciones visibles. El diseño de Inicio se conserva.
