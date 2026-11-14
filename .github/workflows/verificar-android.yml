@@ -39,7 +39,7 @@ jobs:
             sleep 2
             adb shell input tap 400 1470
             sleep 2
-            adb shell input text A
+            adb shell input keycombination 59 29
             sleep 1
             adb shell input text d
             sleep 1
