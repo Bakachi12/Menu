@@ -424,6 +424,15 @@ def abrir_historial():
 
 
 btn_menu_historial.clicked.connect(abrir_historial)
+barra_recibos = QHBoxLayout()
+btn_pdf_recibo = QPushButton("Guardar recibo PDF")
+btn_pdf_recibo.clicked.connect(guardar_recibo_historial)
+barra_recibos.addWidget(btn_pdf_recibo)
+btn_reimprimir_recibo = QPushButton("Reimprimir recibo")
+btn_reimprimir_recibo.clicked.connect(imprimir_recibo_historial)
+barra_recibos.addWidget(btn_reimprimir_recibo)
+# El historial ya tiene su propio layout; se añaden acciones al final.
+pagina_historial.layout().addLayout(barra_recibos)
 # Guardar los pedidos por mesa
 ventanas_pedido = {}
 pedidos = {}
@@ -659,7 +668,7 @@ productos = cargar_productos()
 def guardar_venta(nombre_mesa, metodo_pago):
     """Guarda el cobro completo antes de limpiar la cuenta de la pantalla."""
     gestion_clientes.autorizado()
-    registrar_venta(sesion, nombre_mesa, nombres_clientes_cuenta(nombre_mesa),
+    return registrar_venta(sesion, nombre_mesa, nombres_clientes_cuenta(nombre_mesa),
                    pedidos.get(nombre_mesa, []), gestion_turnos.turno_id_para_venta(), metodo_pago=metodo_pago)
 
 
@@ -674,10 +683,19 @@ def finalizar_cobro(nombre_mesa, metodo_pago, estado):
         return
 
     try:
-        guardar_venta(nombre_mesa, metodo_pago)
+        venta_id = guardar_venta(nombre_mesa, metodo_pago)
     except (sqlite3.Error, PermissionError, ValueError) as error:
         estado.setText(f"Cobro pendiente. {error}")
         return
+
+    # El cobro ya está confirmado; cualquier fallo de impresión NO revierte la venta.
+    from impresion_recibos import habilitada, imprimir
+    try:
+        if habilitada(sesion):
+            imprimir(sesion, venta_id)
+    except Exception as error:
+        QMessageBox.warning(ventana, "Cobro guardado",
+            f"La venta se guardó correctamente, pero no se imprimió el recibo: {error}")
 
     # Limpiar los productos y el nombre temporal
     pedidos[nombre_mesa] = []
@@ -728,6 +746,35 @@ def cargar_historial():
             )
 
     aplicar_filtros_historial()
+
+
+def guardar_recibo_historial():
+    from PySide6.QtWidgets import QFileDialog as DialogoArchivo
+    from impresion_recibos import guardar_pdf
+    fila = tabla_historial.currentRow()
+    if fila < 0:
+        QMessageBox.information(ventana, "Recibo", "Selecciona una venta del historial.")
+        return
+    venta_id = int(tabla_historial.item(fila, 0).text())
+    ruta, _ = DialogoArchivo.getSaveFileName(ventana, "Guardar recibo",
+        f"recibo_{venta_id}.pdf", "PDF (*.pdf)")
+    if not ruta:return
+    try:
+        guardar_pdf(sesion, venta_id, ruta)
+    except Exception as error:
+        QMessageBox.warning(ventana, "Recibo", str(error))
+
+
+def imprimir_recibo_historial():
+    from impresion_recibos import imprimir
+    fila = tabla_historial.currentRow()
+    if fila < 0:
+        QMessageBox.information(ventana, "Recibo", "Selecciona una venta del historial.")
+        return
+    try:
+        imprimir(sesion, int(tabla_historial.item(fila, 0).text()))
+    except Exception as error:
+        QMessageBox.warning(ventana, "Impresión", str(error))
 
 
 def actualizar_anios_historial(ventas):
@@ -1272,6 +1319,20 @@ layout_configuracion.addWidget(titulo_configuracion)
 
 btn_abrir_productos = QPushButton("Productos")
 layout_configuracion.addWidget(btn_abrir_productos)
+from PySide6.QtWidgets import QCheckBox
+from impresion_recibos import habilitada as impresion_habilitada, configurar as configurar_impresion
+opcion_impresion = QCheckBox("Imprimir recibo comercial al cobrar (impresora Windows)")
+opcion_impresion.setChecked(impresion_habilitada(sesion))
+def cambiar_impresion(activa):
+    try:
+        configurar_impresion(sesion, activa)
+    except (PermissionError, sqlite3.Error) as error:
+        opcion_impresion.blockSignals(True)
+        opcion_impresion.setChecked(not activa)
+        opcion_impresion.blockSignals(False)
+        QMessageBox.warning(ventana, "Impresión", str(error))
+opcion_impresion.toggled.connect(cambiar_impresion)
+layout_configuracion.addWidget(opcion_impresion)
 layout_configuracion.addStretch()
 
 paginas.addWidget(pagina_configuracion)
