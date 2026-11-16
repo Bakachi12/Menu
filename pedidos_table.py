@@ -10,6 +10,7 @@ from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from threading import Thread, Lock
+from queue import SimpleQueue,Empty
 from time import monotonic
 from urllib.parse import parse_qs, urlsplit
 import hashlib
@@ -260,6 +261,20 @@ class ServidorTable:
         self.identificar = identificar
         self.solicitudes = solicitudes
         self.http = None
+        self.cambios_admin=SimpleQueue()
+
+    def vincular_admin(self,usuario,password):
+        cuenta=self.identificar(usuario,password)
+        if not cuenta or cuenta.get('rol')!='admin':
+            raise PermissionError('Se requieren credenciales de administrador.')
+        self.iniciar()
+        return self.solicitudes.vincular('PC de administración','admin')
+
+    def leer_cambios_admin(self):
+        cambios=[]
+        while True:
+            try:cambios.append(self.cambios_admin.get_nowait())
+            except Empty:return cambios
 
     def iniciar(self, host='0.0.0.0', puerto=8765):
         if self.http:
@@ -267,6 +282,8 @@ class ServidorTable:
         servicio = self.solicitudes
         envio_directo=self.envio_directo
         pagina = Path(__file__).with_name('pedidos_table.html').read_bytes()
+        pagina_admin=Path(__file__).with_name('administracion.html').read_bytes()
+        avisos_admin=self.cambios_admin
         fondo = Path(__file__).with_name('fondo_bar.png').read_bytes()
 
         sesiones = {}
@@ -275,6 +292,7 @@ class ServidorTable:
         perfil = getattr(getattr(identificar, '__self__', None), 'perfil', None)
 
         def permite_terminal(cuenta, tipo):
+            if tipo=='admin':return bool(cuenta and cuenta.get('rol')=='admin')
             rol = cuenta.get('rol', 'admin') if cuenta else None
             return rol in (('admin','cocinero') if tipo == 'cocina' else ('admin','mesas','mesero'))
 
@@ -320,6 +338,24 @@ class ServidorTable:
 
             def do_GET(self):
                 ruta = urlsplit(self.path).path
+                if ruta=='/admin':return self.responder(200,pagina_admin,'text/html; charset=utf-8')
+                if ruta.startswith('/api/admin/'):
+                    if not self.autorizado('admin'):return self.responder(401,dict(error='Inicia sesión con una cuenta de administrador.'))
+                    try:
+                        from administracion_remota import AdministracionRemota
+                        admin=AdministracionRemota(servicio.ruta,self.empleado)
+                        if ruta=='/api/admin/panel':
+                            parametros=parse_qs(urlsplit(self.path).query)
+                            resultado=admin.panel(parametros.get('desde',[None])[0],parametros.get('hasta',[None])[0])
+                            operador=getattr(getattr(identificar,'__self__',None),'usuario',None)
+                            resultado['caja_usuario']={k:operador.get(k) for k in ('id','nombre','rol','tipo')} if operador else None
+                            return self.responder(200,resultado)
+                        if ruta.startswith('/api/admin/hoja/'):
+                            return self.responder(200,admin.hoja(int(ruta.rsplit('/',1)[-1])))
+                        return self.responder(404,dict(error='Consulta no disponible.'))
+                    except PermissionError as error:return self.responder(403,dict(error=str(error)))
+                    except (ValueError,TypeError) as error:return self.responder(400,dict(error=str(error)))
+                    except sqlite3.Error:return self.responder(503,dict(error='No se pudo consultar la base central. Reintenta.'))
                 if ruta == '/fondo_bar.png':
                     return self.responder(200, fondo, 'image/png')
                 if ruta == '/cocina':
@@ -413,17 +449,17 @@ class ServidorTable:
                         return self.responder(200, {})
                     except sqlite3.Error:
                         return self.responder(503, dict(error='No se pudo actualizar la orden.'))
-                tipo = 'cocina' if self.path in ('/api/cocina/login', '/api/cocina/logout') else 'mesas'
-                login = self.path in ('/api/login', '/api/cocina/login')
+                tipo = 'admin' if self.path.startswith('/api/admin/') else 'cocina' if self.path in ('/api/cocina/login', '/api/cocina/logout') else 'mesas'
+                login = self.path in ('/api/login', '/api/cocina/login','/api/admin/login')
                 if not self.enlace_valido(tipo):
                     return self.responder(401, dict(error='Vínculo incorrecto o retirado. Vuelve a vincular con la caja.', vinculo_invalido=True))
                 if not login and not self.autorizado(tipo):
                     return self.responder(401, dict(error='Inicia sesión con tu cuenta.'))
-                if self.path in ('/api/logout', '/api/cocina/logout'):
+                if self.path in ('/api/logout', '/api/cocina/logout','/api/admin/logout'):
                     with bloqueo:
                         sesiones.pop(self.headers.get('X-Sesion'), None)
                     return self.responder(200, {})
-                if not login and self.path != '/api/solicitudes':
+                if not login and self.path not in ('/api/solicitudes','/api/admin/precio','/api/admin/entrada','/api/admin/usuario'):
                     return self.responder(404, dict(error='Recurso no encontrado.'))
                 try:
                     longitud = int(self.headers.get('Content-Length', '0'))
@@ -447,11 +483,18 @@ class ServidorTable:
                         with bloqueo:
                             sesiones[token] = empleado, monotonic() + 8 * 3600, self.terminal[0]
                         return self.responder(200, dict(token=token, usuario=empleado['usuario']))
+                    if tipo=='admin':
+                        from administracion_remota import AdministracionRemota
+                        resultado=AdministracionRemota(servicio.ruta,self.empleado).cambiar(self.path.rsplit('/',1)[-1],datos)
+                        avisos_admin.put(self.path.rsplit('/',1)[-1])
+                        return self.responder(200,resultado)
                     if isinstance(datos, dict):
                         datos['dispositivo'] = self.terminal[1]
                     resultado=servicio.enviar(datos,self.empleado)
                     resultado['envio_directo']=bool(envio_directo and envio_directo(self.empleado))
                     self.responder(200,resultado)
+                except PermissionError as e:
+                    self.responder(403,dict(error=str(e)))
                 except (ValueError, UnicodeDecodeError) as e:
                     self.responder(400, dict(error=str(e)))
                 except sqlite3.Error:

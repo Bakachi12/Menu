@@ -57,7 +57,7 @@ def organizar_configuracion(layout):
     layout.insertWidget(2, AccesosConfiguracion(botones))
 
 
-def organizar_conexion(panel, activar, ip, nombre, enlace, crear, cocina, terminales, revocar, estado):
+def organizar_conexion(panel, activar, ip, nombre, enlace, crear, cocina, terminales, revocar, estado, admin=None):
     layout = panel.layout()
     while layout.count():
         item = layout.takeAt(0)
@@ -90,6 +90,7 @@ def organizar_conexion(panel, activar, ip, nombre, enlace, crear, cocina, termin
     crear.setText('Crear enlace para tomar pedidos')
     cocina.setText('Crear enlace para la pantalla de cocina')
     poner(paso2, nombre, crear, cocina)
+    if admin is not None:poner(paso2,admin)
     paso3 = tarjeta('3. Abre el enlace en el dispositivo', 'Copia el enlace y ábrelo en el navegador de la tablet o del teléfono. Los pedidos necesitan aprobación en caja.')
     enlace.setPlaceholderText('El enlace aparece al crearlo en el paso 2.')
     poner(paso3, enlace)

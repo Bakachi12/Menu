@@ -82,3 +82,8 @@ Si la PC y PedidosTable tienen iniciada la misma cuenta de Venta libre (mismo us
 ## Cierre de hoja sin salir
 
 En Inicio, Venta libre dispone de **Cierre**. Abre su hoja actual para revisarla; **Cerrar hoja de inventario** la finaliza manteniendo la sesión iniciada. Para continuar vendiendo se verifica inventario y se abre una nueva hoja. Las hojas incluyen el resumen de cocina y el botón para consultar sus platos detallados.
+
+
+## Administración desde otra PC
+
+La conexión de terminales también permite crear un enlace exclusivo de administración. Consulta `ADMIN_REMOTO.md` para usar un panel Admin independiente mientras la caja sigue activa.

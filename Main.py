@@ -2385,6 +2385,9 @@ def volver_al_pedido():
 def ajustar_navegacion():
     global accion_regreso
     pagina = paginas.currentWidget()
+    if 'btn_admin_remoto' in globals():
+        from interfaz_adaptable import es_android
+        btn_admin_remoto.setVisible(not es_android() and pagina is pagina_inicio and bool(sesion.usuario) and sesion.usuario.get('rol') in ('admin','mesas'))
     panel_lateral.setVisible(
         sesion.usuario is not None and pagina == pagina_inicio
         and not getattr(globals().get("adaptacion_android"), "en_inicio", False)
@@ -2814,6 +2817,21 @@ def reflejar_solicitud_table(mesa, cuenta):
 pagina_pedidos_table = PaginaPedidosTable(
     sesion, gestion_turnos, reflejar_solicitud_table, btn_pedidos_table, ventana
 )
+
+def actualizar_catalogo_admin_remoto():
+    if ventana.property('dialogoEnCurso') or ventana.property('accesoEnCurso'):
+        QTimer.singleShot(1000,actualizar_catalogo_admin_remoto);return
+    productos[:]=cargar_productos()
+    actualizar_botones_productos()
+    actualizar_lista_catalogo()
+
+pagina_pedidos_table.al_cambio_admin=actualizar_catalogo_admin_remoto
+btn_admin_remoto=QPushButton('Conectar PC de Admin')
+btn_admin_remoto.setObjectName('ConectarPCAdmin')
+btn_admin_remoto.clicked.connect(pagina_pedidos_table.conectar_admin_desde_caja)
+fila_titulo.addWidget(btn_admin_remoto)
+
+
 from configuracion_visual import organizar_configuracion
 pagina_dispositivos = QWidget()
 layout_dispositivos = QVBoxLayout(pagina_dispositivos)

@@ -104,7 +104,8 @@ class PaginaPedidosTable(QWidget):
         opciones.addWidget(self.estado_configuracion)
         from configuracion_visual import organizar_conexion
         organizar_conexion(self.panel, self.activar, self.ip, self.nombre, self.enlace,
-                           crear, cocina, self.terminales, revocar, self.estado_configuracion)
+                           crear, cocina, self.terminales, revocar, self.estado_configuracion,
+                           self._boton_admin_remoto())
         self.cargar_terminales()
         self.lista = QListWidget()
         self.lista.setWordWrap(True)
@@ -416,7 +417,7 @@ class PaginaPedidosTable(QWidget):
             self.estado_configuracion.setText('Activa primero la conexión móvil.')
             return
         self.tipo_enlace = tipo
-        nombre = self.nombre.text() or ("PedidosCocina" if tipo == "cocina" else "")
+        nombre = self.nombre.text() or ("Administración remota" if tipo=="admin" else "PedidosCocina" if tipo == "cocina" else "")
         self.clave_nueva = self.solicitudes.vincular(nombre, tipo)
         self.nombre.clear()
         self.actualizar_enlace()
@@ -436,7 +437,7 @@ class PaginaPedidosTable(QWidget):
 
     def actualizar_enlace(self):
         if self.servidor.http and self.clave_nueva:
-            ruta = '/cocina' if self.tipo_enlace == 'cocina' else '/'
+            ruta = '/admin' if self.tipo_enlace=='admin' else '/cocina' if self.tipo_enlace == 'cocina' else '/'
             self.enlace.setText(f'http://{self.ip.text().strip()}:{self.servidor.http.server_port}{ruta}#{self.clave_nueva}')
         else:
             self.enlace.clear()
@@ -463,6 +464,38 @@ class PaginaPedidosTable(QWidget):
         except (PermissionError, OSError) as e:
             self.estado_configuracion.setText(f'No se pudo cambiar la conexión: {e}')
 
+    def conectar_admin_desde_caja(self):
+        if not self.sesion.usuario:return
+        from dialogos import DialogoIntegrado
+        dialogo=DialogoIntegrado(self.ventana);dialogo.setWindowTitle('Conectar PC de Admin')
+        dialogo.setProperty('compacto',True);dialogo.setStyleSheet(FORMULARIOS)
+        layout=QVBoxLayout(dialogo)
+        ayuda=QLabel('Introduce una cuenta Admin para crear el enlace. La sesión del cajero permanece abierta.');ayuda.setWordWrap(True);layout.addWidget(ayuda)
+        usuario=QLineEdit();usuario.setPlaceholderText('Usuario administrador');layout.addWidget(usuario)
+        password=QLineEdit();password.setPlaceholderText('Contraseña de Admin');password.setEchoMode(QLineEdit.EchoMode.Password);layout.addWidget(password)
+        crear=QPushButton('Crear enlace de administración');layout.addWidget(crear)
+        enlace=QLineEdit();enlace.setReadOnly(True);enlace.setPlaceholderText('El enlace aparecerá aquí');layout.addWidget(enlace)
+        copiar=QPushButton('Copiar enlace');copiar.setEnabled(False);layout.addWidget(copiar)
+        estado=QLabel();estado.setWordWrap(True);layout.addWidget(estado)
+        def generar():
+            try:
+                self.clave_nueva=self.servidor.vincular_admin(usuario.text(),password.text())
+                self.tipo_enlace='admin';self.actualizar_enlace()
+                self._guardar_preferencia_conexion(True)
+                self.activar.setText('Desactivar conexión móvil')
+                enlace.setText(self.enlace.text());copiar.setEnabled(True);crear.setEnabled(False)
+                self.cargar_terminales();estado.setText('Abre este enlace en el navegador de la otra PC e inicia sesión como Admin.')
+            except (ValueError,PermissionError,OSError) as error:estado.setText(str(error))
+            finally:password.clear()
+        crear.clicked.connect(generar)
+        copiar.clicked.connect(lambda:QApplication.clipboard().setText(enlace.text()))
+        dialogo.exec()
+
+    def _boton_admin_remoto(self):
+        boton=QPushButton('Crear enlace para otra PC · Administración')
+        boton.clicked.connect(lambda:self.generar('admin'))
+        return boton
+
     def envio_directo(self,empleado):
         usuario=self.sesion.usuario
         return bool(usuario and empleado and usuario.get('tipo')=='venta_libre'
@@ -474,6 +507,8 @@ class PaginaPedidosTable(QWidget):
             self.lista.clear()
             return
         try:
+            cambios=self.servidor.leer_cambios_admin()
+            if cambios and getattr(self,'al_cambio_admin',None):self.al_cambio_admin()
             for mesa,cuenta in self.solicitudes.resolver_directas(self.sesion,self.turnos):
                 self.al_aceptar(mesa,cuenta)
             pendientes = self.solicitudes.listar()
