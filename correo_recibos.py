@@ -1,12 +1,10 @@
 """Envío opcional de recibos comerciales por SMTP. Credenciales en almacén seguro del SO."""
-import io
 import re
 import smtplib
 import ssl
 from email.message import EmailMessage
 from PySide6.QtCore import QSettings
 from PySide6.QtGui import QTextDocument, QPageSize
-from PySide6.QtCore import QMarginsF
 from PySide6.QtPrintSupport import QPrinter
 from impresion_recibos import obtener_venta, recibo_html
 
