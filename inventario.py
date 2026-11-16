@@ -2147,6 +2147,19 @@ class _DetalleHojaInventario(QWidget):
                 aviso.setWordWrap(True);aviso.setStyleSheet('color:#a8bad0; font-size:12px;')
                 interior.addWidget(aviso)
         acciones=QHBoxLayout()
+        exportar=QPushButton('Guardar hoja A4 (PDF)')
+        def guardar_a4():
+            from PySide6.QtWidgets import QFileDialog, QMessageBox
+            from reporte_inventario_a4 import exportar_pdf
+            destino,_=QFileDialog.getSaveFileName(self, 'Guardar inventario A4',
+                f"inventario_turno_{turno['turno_id']}.pdf", 'PDF (*.pdf)')
+            if not destino:return
+            try:
+                exportar_pdf(destino, turno, filas, resumen)
+            except Exception as error:
+                QMessageBox.warning(self, 'No se pudo exportar', str(error))
+        exportar.clicked.connect(guardar_a4)
+        acciones.addWidget(exportar)
         if resumen is not None:
             cocina=QPushButton('Ver cocina detallada')
             cocina.setEnabled(bool(resumen.get('cocina')))
