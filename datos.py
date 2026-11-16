@@ -232,7 +232,7 @@ def registrar_venta(sesion, nombre_mesa, clientes, productos, turno_id=None, *, 
         if es_venta_libre:
             from hojas_venta_libre import venta
             hoja_libre_id=venta(conexion,sesion.usuario,productos)
-        conexion.execute(
+        cursor_venta = conexion.execute(
             'INSERT INTO ventas(fecha, mesa, cliente, productos, total, turno_id, metodo_pago, cajero_id, hoja_libre_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
             (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), nombre_operacion(nombre_mesa), clientes,
              json.dumps(productos, ensure_ascii=False), total, turno_id, metodo_pago, sesion.usuario['id'], hoja_libre_id),
@@ -244,6 +244,7 @@ def registrar_venta(sesion, nombre_mesa, clientes, productos, turno_id=None, *, 
             conexion.execute("""UPDATE solicitudes_table SET estado = 'rechazada',
                 responsable_id = ?, resuelta = ? WHERE mesa = ? AND estado = 'pendiente'""",
                 (sesion.usuario['id'], datetime.now().isoformat(timespec='seconds'), nombre_mesa))
+    return cursor_venta.lastrowid
 
 
 def cantidades_cocina_hoy(sesion):
