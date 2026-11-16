@@ -672,7 +672,7 @@ def guardar_venta(nombre_mesa, metodo_pago):
                    pedidos.get(nombre_mesa, []), gestion_turnos.turno_id_para_venta(), metodo_pago=metodo_pago)
 
 
-def finalizar_cobro(nombre_mesa, metodo_pago, estado):
+def finalizar_cobro(nombre_mesa, metodo_pago, estado, imprimir_ahora=True):
     """Confirma la venta y libera la mesa; ante un error conserva su cuenta."""
     # Primero guardar la venta en SQLite
     if not pedidos.get(nombre_mesa):
@@ -691,7 +691,7 @@ def finalizar_cobro(nombre_mesa, metodo_pago, estado):
     # El cobro ya está confirmado; cualquier fallo de impresión NO revierte la venta.
     from impresion_recibos import habilitada, imprimir
     try:
-        if habilitada(sesion):
+        if imprimir_ahora and habilitada(sesion):
             imprimir(sesion, venta_id)
     except Exception as error:
         QMessageBox.warning(ventana, "Cobro guardado",
@@ -860,8 +860,14 @@ def cobrar_mesa(nombre_mesa):
         btn_confirmar.setEnabled(True)
 
     metodos.buttonClicked.connect(seleccionar_pago)
+    from PySide6.QtWidgets import QCheckBox
+    from impresion_recibos import habilitada as impresion_activada
+    imprimir_al_cobrar = QCheckBox("Imprimir recibo al cerrar esta cuenta")
+    imprimir_al_cobrar.setChecked(impresion_activada(sesion))
+    imprimir_al_cobrar.setVisible(impresion_activada(sesion))
+    dialogo.layout().addWidget(imprimir_al_cobrar)
     btn_confirmar.clicked.connect(
-        lambda checked=False: finalizar_cobro(nombre_mesa, metodos.checkedButton().text(), estado)
+        lambda checked=False: finalizar_cobro(nombre_mesa, metodos.checkedButton().text(), estado, imprimir_al_cobrar.isChecked())
     )
 
     paginas.setCurrentWidget(pagina_cobro)
