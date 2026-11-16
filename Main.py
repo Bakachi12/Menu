@@ -672,7 +672,7 @@ def guardar_venta(nombre_mesa, metodo_pago):
                    pedidos.get(nombre_mesa, []), gestion_turnos.turno_id_para_venta(), metodo_pago=metodo_pago)
 
 
-def finalizar_cobro(nombre_mesa, metodo_pago, estado, imprimir_ahora=True):
+def finalizar_cobro(nombre_mesa, metodo_pago, estado, imprimir_ahora=True, correo_cliente=""):
     """Confirma la venta y libera la mesa; ante un error conserva su cuenta."""
     # Primero guardar la venta en SQLite
     if not pedidos.get(nombre_mesa):
@@ -696,6 +696,14 @@ def finalizar_cobro(nombre_mesa, metodo_pago, estado, imprimir_ahora=True):
     except Exception as error:
         QMessageBox.warning(ventana, "Cobro guardado",
             f"La venta se guardó correctamente, pero no se imprimió el recibo: {error}")
+
+    if correo_cliente.strip():
+        try:
+            from correo_recibos import enviar
+            enviar(sesion, venta_id, correo_cliente)
+        except Exception as error:
+            QMessageBox.warning(ventana, "Cobro guardado",
+                f"La venta quedó registrada, pero no se envió el correo: {error}")
 
     # Limpiar los productos y el nombre temporal
     pedidos[nombre_mesa] = []
@@ -866,8 +874,13 @@ def cobrar_mesa(nombre_mesa):
     imprimir_al_cobrar.setChecked(impresion_activada(sesion))
     imprimir_al_cobrar.setVisible(impresion_activada(sesion))
     dialogo.layout().addWidget(imprimir_al_cobrar)
+    from correo_recibos import configuracion as configuracion_correo
+    correo_cliente = QLineEdit()
+    correo_cliente.setPlaceholderText("Correo del cliente (opcional)")
+    correo_cliente.setVisible(configuracion_correo()["activo"])
+    dialogo.layout().addWidget(correo_cliente)
     btn_confirmar.clicked.connect(
-        lambda checked=False: finalizar_cobro(nombre_mesa, metodos.checkedButton().text(), estado, imprimir_al_cobrar.isChecked())
+        lambda checked=False: finalizar_cobro(nombre_mesa, metodos.checkedButton().text(), estado, imprimir_al_cobrar.isChecked(), correo_cliente.text())
     )
 
     paginas.setCurrentWidget(pagina_cobro)
@@ -1339,6 +1352,41 @@ def cambiar_impresion(activa):
         QMessageBox.warning(ventana, "Impresión", str(error))
 opcion_impresion.toggled.connect(cambiar_impresion)
 layout_configuracion.addWidget(opcion_impresion)
+from correo_recibos import configuracion as leer_correo, guardar as guardar_correo, enviar as enviar_correo
+cfg_correo=leer_correo()
+layout_configuracion.addWidget(QLabel("Correo del local · envío de recibos"))
+def campo_correo(titulo, valor="", secreto=False):
+    layout_configuracion.addWidget(QLabel(titulo))
+    campo=QLineEdit(str(valor or ""))
+    if secreto:campo.setEchoMode(QLineEdit.EchoMode.Password)
+    layout_configuracion.addWidget(campo)
+    return campo
+correo_nombre=campo_correo("Nombre del local",cfg_correo["nombre"])
+correo_remitente=campo_correo("Dirección de correo del local",cfg_correo["remitente"])
+correo_servidor=campo_correo("Servidor SMTP",cfg_correo["servidor"])
+correo_puerto=campo_correo("Puerto SMTP",cfg_correo["puerto"])
+correo_usuario=campo_correo("Usuario SMTP",cfg_correo["usuario"])
+correo_clave=campo_correo("Contraseña de aplicación (dejar vacía para conservar)",secreto=True)
+correo_tls=QCheckBox("Usar STARTTLS (puerto 587); desmarcar para SSL (465)")
+correo_tls.setChecked(cfg_correo["tls"])
+layout_configuracion.addWidget(correo_tls)
+correo_activo=QCheckBox("Habilitar envío de recibos por correo")
+correo_activo.setChecked(cfg_correo["activo"])
+layout_configuracion.addWidget(correo_activo)
+def guardar_configuracion_correo():
+    try:
+        guardar_correo(sesion,nombre=correo_nombre.text().strip(),
+            remitente=correo_remitente.text().strip(),servidor=correo_servidor.text().strip(),
+            puerto=int(correo_puerto.text()),usuario=correo_usuario.text().strip(),
+            tls=correo_tls.isChecked(),activo=correo_activo.isChecked(),
+            password=correo_clave.text())
+        correo_clave.clear()
+        QMessageBox.information(ventana,"Correo","Configuración guardada.")
+    except Exception as error:
+        QMessageBox.warning(ventana,"Correo",str(error))
+boton_guardar_correo=QPushButton("Guardar configuración de correo")
+boton_guardar_correo.clicked.connect(guardar_configuracion_correo)
+layout_configuracion.addWidget(boton_guardar_correo)
 layout_configuracion.addStretch()
 
 paginas.addWidget(pagina_configuracion)
