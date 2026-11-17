@@ -6,15 +6,18 @@ class AccesoPIN:
     def preparar_pines(self):
         with self.conexion() as db:
             db.execute('CREATE TABLE IF NOT EXISTS acceso_pin(usuario_id INTEGER PRIMARY KEY,sal BLOB,resumen BLOB,iteraciones INTEGER,intentos INTEGER NOT NULL DEFAULT 0,bloqueado REAL NOT NULL DEFAULT 0)')
+            columnas={f[1] for f in db.execute('PRAGMA table_info(acceso_pin)')}
+            if 'longitud' not in columnas:
+                db.execute('ALTER TABLE acceso_pin ADD COLUMN longitud INTEGER NOT NULL DEFAULT 6')
 
     def usuarios_acceso(self):
         self.preparar_pines()
         with self.conexion() as db:
-            return db.execute('SELECT u.id,u.nombre,u.usuario,u.rol,p.usuario_id IS NOT NULL FROM usuarios u LEFT JOIN acceso_pin p ON p.usuario_id=u.id WHERE u.eliminado=0 ORDER BY u.nombre COLLATE NOCASE').fetchall()
+            return db.execute('SELECT u.id,u.nombre,u.usuario,u.rol,p.usuario_id IS NOT NULL,p.longitud FROM usuarios u LEFT JOIN acceso_pin p ON p.usuario_id=u.id WHERE u.eliminado=0 ORDER BY u.nombre COLLATE NOCASE').fetchall()
 
     def configurar_pin(self,usuario_id,pin):
         self.exigir_admin()
-        if len(pin)!=6 or not pin.isascii() or not pin.isdigit():raise ValueError('El PIN debe tener exactamente 6 números.')
+        if len(pin) not in (4,5,6) or not pin.isascii() or not pin.isdigit():raise ValueError('El PIN debe tener entre 4 y 6 números.')
         self.preparar_pines()
         sal=secrets.token_bytes(16)
         resumen=hashlib.pbkdf2_hmac('sha256',pin.encode(),sal,self.ITERACIONES)
@@ -22,19 +25,19 @@ class AccesoPIN:
             usuario=db.execute('SELECT rol FROM usuarios WHERE id=? AND eliminado=0',(usuario_id,)).fetchone()
             if not usuario:raise ValueError('El usuario ya no existe.')
             if usuario[0]=='admin':raise ValueError('Admin conserva su contraseña para iniciar sesión y autorizar operaciones.')
-            db.execute('INSERT INTO acceso_pin VALUES(?,?,?,?,0,0) ON CONFLICT(usuario_id) DO UPDATE SET sal=excluded.sal,resumen=excluded.resumen,iteraciones=excluded.iteraciones,intentos=0,bloqueado=0',(usuario_id,sal,resumen,self.ITERACIONES))
+            db.execute('INSERT INTO acceso_pin(usuario_id,sal,resumen,iteraciones,intentos,bloqueado,longitud) VALUES(?,?,?,?,0,0,?) ON CONFLICT(usuario_id) DO UPDATE SET sal=excluded.sal,resumen=excluded.resumen,iteraciones=excluded.iteraciones,intentos=0,bloqueado=0,longitud=excluded.longitud',(usuario_id,sal,resumen,self.ITERACIONES,len(pin)))
 
     def iniciar_pin(self,usuario_id,pin):
         self.cerrar()
         self.preparar_pines()
         with self.conexion() as db:
             db.execute('BEGIN IMMEDIATE')
-            fila=db.execute('SELECT p.sal,p.resumen,p.iteraciones,p.intentos,p.bloqueado FROM acceso_pin p JOIN usuarios u ON u.id=p.usuario_id WHERE u.id=? AND u.eliminado=0 AND u.rol!=?',(usuario_id,'admin')).fetchone()
+            fila=db.execute('SELECT p.sal,p.resumen,p.iteraciones,p.intentos,p.bloqueado,p.longitud FROM acceso_pin p JOIN usuarios u ON u.id=p.usuario_id WHERE u.id=? AND u.eliminado=0 AND u.rol!=?',(usuario_id,'admin')).fetchone()
             if not fila:return False
-            sal,esperado,vueltas,intentos,bloqueado=fila
+            sal,esperado,vueltas,intentos,bloqueado,longitud=fila
             ahora=time.time()
             if bloqueado>ahora:return False
-            valido=len(pin)==6 and pin.isascii() and pin.isdigit() and hmac.compare_digest(hashlib.pbkdf2_hmac('sha256',pin.encode(),sal,vueltas),esperado)
+            valido=len(pin)==longitud and pin.isascii() and pin.isdigit() and hmac.compare_digest(hashlib.pbkdf2_hmac('sha256',pin.encode(),sal,vueltas),esperado)
             if not valido:
                 intentos=0 if bloqueado else intentos
                 intentos+=1
@@ -50,7 +53,7 @@ def configurar_pin_seleccionado(pagina):
     item=pagina.lista.currentItem()
     if item is None:pagina.mensaje.setText('Selecciona un usuario para configurar su PIN.');return
     d=DialogoIntegrado(pagina.window());d.setProperty('compacto',True);d.setWindowTitle('Configurar PIN de usuario')
-    layout=QVBoxLayout(d);layout.addWidget(QLabel('Escribe un PIN de 6 números. Admin conserva su contraseña.'))
+    layout=QVBoxLayout(d);layout.addWidget(QLabel('Escribe un PIN de 4 a 6 números. Admin conserva su contraseña.'))
     campos=[]
     for titulo in ('Nuevo PIN','Repetir PIN'):
         layout.addWidget(QLabel(titulo));campo=QLineEdit();campo.setEchoMode(QLineEdit.EchoMode.Password);campo.setMaxLength(6);campo.setInputMethodHints(Qt.InputMethodHint.ImhDigitsOnly);layout.addWidget(campo);campos.append(campo)
