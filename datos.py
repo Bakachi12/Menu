@@ -147,7 +147,7 @@ def historial_cobros(sesion):
         return db.execute(consulta + ' ORDER BY v.id DESC', parametros).fetchall()
 
 
-def registrar_venta(sesion, nombre_mesa, clientes, productos, turno_id=None, *, metodo_pago):
+def registrar_venta(sesion, nombre_mesa, clientes, productos, turno_id=None, *, metodo_pago, verificar_cuenta=False):
     """Cobro indivisible: registra venta, elimina pedido abierto y libera clientes.
 
     Si alguna escritura falla, SQLite revierte las tres operaciones.
@@ -167,6 +167,10 @@ def registrar_venta(sesion, nombre_mesa, clientes, productos, turno_id=None, *, 
     total = sum(centimos(p) for p in productos) / 100
     with sesion.conexion() as conexion:
         conexion.execute('BEGIN IMMEDIATE')
+        if verificar_cuenta:
+            fila = conexion.execute('SELECT productos FROM pedidos_abiertos WHERE mesa=?', (nombre_mesa,)).fetchone()
+            if not fila or not productos or json.loads(fila[0]) != productos:
+                raise ValueError('La cuenta cambió o ya fue cobrada. Actualiza antes de cobrar.')
         catalogo = {(n, c): seccion for n, c, seccion in conexion.execute("SELECT nombre,categoria,seccion FROM productos")}
         productos = [dict(p, seccion=catalogo.get((p['nombre'], p.get('categoria', 'General')))
                           or p.get('seccion') or seccion_inicial(p['nombre'], p.get('categoria', 'General')))
