@@ -267,12 +267,14 @@ class ServidorTable:
         servicio = self.solicitudes
         envio_directo=self.envio_directo
         pagina = Path(__file__).with_name('pedidos_table.html').read_bytes()
+        pagina_caja = Path(__file__).with_name('caja_web.html').read_bytes()
         fondo = Path(__file__).with_name('fondo_bar.png').read_bytes()
 
         sesiones = {}
         bloqueo = Lock()
         identificar = self.identificar
-        perfil = getattr(getattr(identificar, '__self__', None), 'perfil', None)
+        gestor_usuarios = getattr(identificar, '__self__', None)
+        perfil = getattr(gestor_usuarios, 'perfil', None)
 
         def permite_terminal(cuenta, tipo):
             rol = cuenta.get('rol', 'admin') if cuenta else None
@@ -322,6 +324,13 @@ class ServidorTable:
                 ruta = urlsplit(self.path).path
                 if ruta == '/fondo_bar.png':
                     return self.responder(200, fondo, 'image/png')
+                if ruta == '/caja':
+                    return self.responder(200, pagina_caja, 'text/html; charset=utf-8')
+                if ruta == '/api/perfiles':
+                    if not self.enlace_valido():
+                        return self.responder(401, dict(error='Vincula esta terminal antes de elegir usuario.'))
+                    perfiles = gestor_usuarios.usuarios_acceso() if gestor_usuarios else []
+                    return self.responder(200, [dict(id=p[0], nombre=p[1], usuario=p[2], pin=bool(p[4]), longitud=p[5]) for p in perfiles if p[3] in ('admin','mesas','mesero')])
                 if ruta == '/cocina':
                     return self.responder(200, PAGINA_COCINA, 'text/html; charset=utf-8')
                 if ruta in ('/api/cocina', '/api/cocina/listas', '/api/cocina/disponibilidad'):
@@ -436,9 +445,15 @@ class ServidorTable:
                         if not isinstance(datos, dict):
                             raise ValueError('Credenciales inválidas.')
                         usuario, password = datos.get('usuario'), datos.get('password')
-                        if not all(isinstance(v, str) and 0 < len(v) <= 128 for v in (usuario, password)):
-                            raise ValueError('Introduce tu usuario y contraseña.')
-                        empleado = identificar(usuario, password)
+                        pin_id, pin = datos.get('pin_usuario_id'), datos.get('pin')
+                        if pin_id is not None:
+                            if type(pin_id) is not int or not isinstance(pin, str):
+                                raise ValueError('PIN inválido.')
+                            empleado = gestor_usuarios.identificar_pin(pin_id, pin) if gestor_usuarios else None
+                        else:
+                            if not all(isinstance(v, str) and 0 < len(v) <= 128 for v in (usuario, password)):
+                                raise ValueError('Introduce tu usuario y contraseña.')
+                            empleado = identificar(usuario, password)
                         if not empleado:
                             return self.responder(401, dict(error='Usuario o contraseña incorrectos.'))
                         if not permite_terminal(empleado, tipo):
