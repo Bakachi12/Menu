@@ -332,6 +332,10 @@ class DialogoAcceso(FondoEspera):
         layout.addWidget(ayuda)
         layout.addSpacing(8)
         self.nombre = QLineEdit()
+        self.tarjetas_perfiles = QWidget()
+        self.layout_tarjetas = QGridLayout(self.tarjetas_perfiles)
+        self.layout_tarjetas.setSpacing(8)
+        layout.addWidget(self.tarjetas_perfiles)
         self.selector = QComboBox()
         self.selector.setMinimumHeight(52)
         self.selector.currentIndexChanged.connect(self.seleccionar_usuario)
@@ -343,7 +347,8 @@ class DialogoAcceso(FondoEspera):
         self.password.setPlaceholderText('Tu contraseña')
         self.password.setMaxLength(128)
         self.password.setEchoMode(QLineEdit.EchoMode.Password)
-        for titulo_campo, campo in (('Selecciona tu usuario', self.selector), ('PIN o contraseña', self.password)):
+        self.selector.hide()
+        for titulo_campo, campo in (('PIN o contraseña', self.password),):
             etiqueta = QLabel(titulo_campo)
             etiqueta.setStyleSheet('color: #C0CBDA; font-size: 13px;')
             layout.addWidget(etiqueta)
@@ -397,6 +402,28 @@ class DialogoAcceso(FondoEspera):
                 and self.entrar.isEnabled()):
             self.validar()
 
+    def seleccionar_tarjeta(self, indice):
+        self.selector.setCurrentIndex(indice)
+        self.seleccionar_usuario()
+        self.error.clear()
+        self.password.setFocus()
+        self.dibujar_tarjetas()
+
+    def dibujar_tarjetas(self):
+        while self.layout_tarjetas.count():
+            elemento = self.layout_tarjetas.takeAt(0)
+            if elemento.widget():
+                elemento.widget().deleteLater()
+        for indice in range(self.selector.count()):
+            datos = self.selector.itemData(indice)
+            boton = QPushButton(datos[1])
+            boton.setMinimumHeight(65)
+            boton.setToolTip(datos[2])
+            boton.setCheckable(True)
+            boton.setChecked(indice == self.selector.currentIndex())
+            boton.clicked.connect(lambda checked=False, i=indice: self.seleccionar_tarjeta(i))
+            self.layout_tarjetas.addWidget(boton, indice // 3, indice % 3)
+
     def cargar_usuarios_acceso(self):
         from PySide6.QtCore import QSettings
         self.selector.clear()
@@ -406,6 +433,7 @@ class DialogoAcceso(FondoEspera):
         for i in range(self.selector.count()):
             if self.selector.itemData(i)[0]==ultimo:self.selector.setCurrentIndex(i);break
         self.seleccionar_usuario()
+        self.dibujar_tarjetas()
 
     def actualizar_reloj(self):
         ahora = QDateTime.currentDateTime()
