@@ -385,15 +385,15 @@ class DialogoAcceso(FondoEspera):
         self.password.clear()
         if datos:
             self.nombre.setText(datos[2])
-            self.password.setMaxLength(6 if datos[4] and datos[3]!='admin' else 128)
-            self.password.setPlaceholderText('PIN de 6 números' if datos[4] and datos[3]!='admin' else 'Contraseña · Admin o usuario sin PIN')
+            self.password.setMaxLength(datos[5] if datos[4] and datos[3]!='admin' else 128)
+            self.password.setPlaceholderText(f'PIN de {datos[5]} números' if datos[4] and datos[3]!='admin' else 'Contraseña · Admin o usuario sin PIN')
             self.password.setInputMethodHints(Qt.InputMethodHint.ImhDigitsOnly if datos[4] and datos[3]!='admin' else Qt.InputMethodHint.ImhNone)
 
     def intentar_acceso_automatico(self, texto):
-        """Validar únicamente al completar seis dígitos del PIN seleccionado."""
+        """Validar al completar la longitud configurada del PIN seleccionado."""
         datos = self.selector.currentData()
         if (datos and datos[4] and datos[3] != 'admin'
-                and len(texto) == 6 and texto.isascii() and texto.isdigit()
+                and len(texto) == datos[5] and texto.isascii() and texto.isdigit()
                 and self.entrar.isEnabled()):
             self.validar()
 
