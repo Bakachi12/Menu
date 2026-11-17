@@ -2,7 +2,7 @@
 from pathlib import Path
 
 raiz = Path(SPECPATH)
-recursos = ['inicio.ui', 'pedido.ui', 'confirmar_cobro.ui', 'fondo_bar.png', 'pedidos_table.html']
+recursos = ['inicio.ui', 'pedido.ui', 'confirmar_cobro.ui', 'fondo_bar.png', 'pedidos_table.html', 'caja_web.html']
 a = Analysis(
     [str(raiz / 'Main.py')], pathex=[str(raiz)],
     binaries=[], datas=[(str(raiz / nombre), '.') for nombre in recursos]
