@@ -274,7 +274,7 @@ async function cargarPerfilesCaja(){
  }catch(e){message(e.message,true)}
 }
 $('pass').addEventListener('input',()=>{
- if(perfilPin&&$('pass').value.length===perfilPin.longitud&&/^\\d+$/.test($('pass').value))
+ if(perfilPin&&$('pass').value.length===perfilPin.longitud&&/^\d+$/.test($('pass').value))
   $('login').requestSubmit();
 });
 $('login').onsubmit=async event=>{
