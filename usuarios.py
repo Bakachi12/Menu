@@ -360,6 +360,8 @@ class DialogoAcceso(FondoEspera):
         self.entrar.clicked.connect(self.validar)
         self.nombre.returnPressed.connect(self.password.setFocus)
         self.password.returnPressed.connect(self.validar)
+        # Los PIN de seis dígitos inician automáticamente; las contraseñas no.
+        self.password.textChanged.connect(self.intentar_acceso_automatico)
         layout.addWidget(self.entrar)
         fila = QHBoxLayout()
         fila.addStretch(1)
@@ -386,6 +388,14 @@ class DialogoAcceso(FondoEspera):
             self.password.setMaxLength(6 if datos[4] and datos[3]!='admin' else 128)
             self.password.setPlaceholderText('PIN de 6 números' if datos[4] and datos[3]!='admin' else 'Contraseña · Admin o usuario sin PIN')
             self.password.setInputMethodHints(Qt.InputMethodHint.ImhDigitsOnly if datos[4] and datos[3]!='admin' else Qt.InputMethodHint.ImhNone)
+
+    def intentar_acceso_automatico(self, texto):
+        """Validar únicamente al completar seis dígitos del PIN seleccionado."""
+        datos = self.selector.currentData()
+        if (datos and datos[4] and datos[3] != 'admin'
+                and len(texto) == 6 and texto.isascii() and texto.isdigit()
+                and self.entrar.isEnabled()):
+            self.validar()
 
     def cargar_usuarios_acceso(self):
         from PySide6.QtCore import QSettings
