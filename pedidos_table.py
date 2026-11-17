@@ -326,6 +326,14 @@ class ServidorTable:
                     return self.responder(200, fondo, 'image/png')
                 if ruta == '/caja':
                     return self.responder(200, pagina_caja, 'text/html; charset=utf-8')
+                if ruta == '/api/caja/historial':
+                    if not self.autorizado():
+                        return self.responder(401, dict(error='Inicia sesión.'))
+                    try:
+                        from caja_remota import historial
+                        return self.responder(200, historial(servicio, self.empleado))
+                    except PermissionError as e:
+                        return self.responder(403, dict(error=str(e)))
                 if ruta == '/api/perfiles':
                     if not self.enlace_valido():
                         return self.responder(401, dict(error='Vincula esta terminal antes de elegir usuario.'))
@@ -422,6 +430,25 @@ class ServidorTable:
                         return self.responder(200, {})
                     except sqlite3.Error:
                         return self.responder(503, dict(error='No se pudo actualizar la orden.'))
+                if self.path in ('/api/caja/modificar', '/api/caja/cobrar'):
+                    if not self.autorizado():
+                        return self.responder(401, dict(error='Inicia sesión en la terminal.'))
+                    try:
+                        longitud = int(self.headers.get('Content-Length', '0'))
+                        if not 0 < longitud <= 24000 or self.headers.get('Content-Type','').split(';')[0] != 'application/json':
+                            raise ValueError('Solicitud inválida.')
+                        datos = json.loads(self.rfile.read(longitud))
+                        if not isinstance(datos, dict):
+                            raise ValueError('Datos inválidos.')
+                        from caja_remota import modificar, cobrar
+                        resultado = modificar(servicio, self.empleado, datos) if self.path.endswith('/modificar') else cobrar(servicio, self.empleado, datos)
+                        return self.responder(200, resultado)
+                    except (ValueError, UnicodeDecodeError) as e:
+                        return self.responder(409, dict(error=str(e)))
+                    except PermissionError as e:
+                        return self.responder(403, dict(error=str(e)))
+                    except sqlite3.Error:
+                        return self.responder(503, dict(error='No se pudo guardar en la PC.'))
                 tipo = 'cocina' if self.path in ('/api/cocina/login', '/api/cocina/logout') else 'mesas'
                 login = self.path in ('/api/login', '/api/cocina/login')
                 if not self.enlace_valido(tipo):
