@@ -1,17 +1,29 @@
-# Caja web — primera fase
+# Caja HTML — versión experimental
 
-La caja de Windows sigue siendo la fuente de verdad. Se añade la ruta `http://IP-DE-LA-PC:8765/caja` al servidor de PedidosTable, que debe estar iniciado en la aplicación principal.
+**No usar para ventas reales hasta validar los cobros con una base de datos de prueba y verificar los turnos, la impresión y los inventarios.** Cambios guardados en la rama `feature/impresion-recibos-inventario-a4`, sin publicar un EXE.
 
-## Cómo probar
+## Cómo vincular
 
-1. Ejecutar Menu en la PC y activar el servidor de PedidosTable.
-2. Vincular la tablet con un enlace de **PedidosTable** emitido por la PC (la misma terminal debe estar autorizada).
-3. Abrir `http://IP-DE-LA-PC:8765/caja` en el navegador de la tablet, en la misma red.
-4. Introducir el enlace de vinculación y seleccionar la tarjeta del empleado. Los empleados con PIN configurado pueden iniciar automáticamente al completar 4–6 cifras. Los demás usan su contraseña.
-5. Consultar mesas, productos y enviar pedidos a la PC para revisión.
+1. Actualiza la rama de desarrollo en una PC de pruebas, realiza respaldo de `ventas.db` y ejecuta `Main.py` (o compila un EXE nuevo con `menu_windows.spec`).
+2. En Windows abre **Configuración → Conectar dispositivos → Activar conexión móvil** y genera un enlace de **PedidosTable** para la tablet.
+3. Conecta tablet y PC al mismo Wi-Fi y abre `http://IP-DE-LA-PC:8765/caja` en el navegador.
+4. Pega el enlace completo de PedidosTable, selecciona el perfil e inicia con PIN (4–6 cifras) o contraseña.
+5. Prueba abrir una mesa, añadir y retirar bebidas, cerrar con Efectivo/Yappy/Clave/Visa y consultar **Mis cobros**.
+6. Confirma en la PC que cada venta aparece una sola vez, que se liberó la mesa, que el inventario del turno se descontó correctamente y que el historial pertenece al cajero autenticado.
 
-## Alcance real y limitaciones
+## Qué está programado
 
-Esta primera fase **no es aún una caja web completa**: aprovecha el flujo de solicitudes de PedidosTable, por lo que las órdenes se envían para aceptación en la PC. **No se permite cobrar, cerrar turnos ni modificar inventario desde el navegador**. Se requiere diseñar y probar operaciones de caja remotas atómicas, bloqueo de cuentas, validación de turno y permisos antes de habilitar cobros.
+- Reutilización del servidor PedidosTable, perfiles y PIN.
+- Catálogo y cuentas consultados desde SQLite de la PC.
+- Agregar y retirar productos de mesas con control de versión para detectar cambios simultáneos.
+- Cobro de cuentas con verificación de estado dentro de la misma transacción SQLite; aplica controles de rol, turno e inventario del programa existente.
+- Historial del empleado, actualización periódica en navegador y actualización de cuentas en Windows.
+- Caja HTML incluida en la configuración de empaquetado del EXE.
 
-El servidor está accesible en la red local: no publicar el puerto 8765 a Internet. La vinculación y la sesión son necesarias; la autenticación por PIN reutiliza el bloqueo de intentos persistente. El sistema no ha sido probado en tablets ni con el ejecutable.
+## Pendiente / limitaciones
+
+- **No se han ejecutado pruebas de integración ni pruebas reales con tablet, Windows o impresora.**
+- La interfaz web todavía no permite seleccionar preparación y acompañamientos de cocina, asignar clientes, crear cuentas de barra, imprimir o enviar recibos, ni operar Venta libre.
+- El inicio de sesión web y los cobros dependen de un servidor HTTP local: **no publicar el puerto 8765 en Internet ni usarlo en Wi-Fi público**.
+- El historial de la caja web muestra los últimos 80 cobros del empleado, no herramientas administrativas.
+- El ejecutable anterior **no contiene estos cambios**. Es necesario ejecutar el código actualizado o compilar uno nuevo.
