@@ -669,7 +669,7 @@ def guardar_venta(nombre_mesa, metodo_pago):
     """Guarda el cobro completo antes de limpiar la cuenta de la pantalla."""
     gestion_clientes.autorizado()
     return registrar_venta(sesion, nombre_mesa, nombres_clientes_cuenta(nombre_mesa),
-                   pedidos.get(nombre_mesa, []), gestion_turnos.turno_id_para_venta(), metodo_pago=metodo_pago)
+                   pedidos.get(nombre_mesa, []), gestion_turnos.turno_id_para_venta(), metodo_pago=metodo_pago, verificar_cuenta=True)
 
 
 def finalizar_cobro(nombre_mesa, metodo_pago, estado, imprimir_ahora=True, correo_cliente=""):
@@ -2925,6 +2925,40 @@ def reflejar_solicitud_table(mesa, cuenta):
         actualizar_cuenta(mesa, pantalla.findChild(QListWidget, 'Listapedido'),
                           pantalla.findChild(QLabel, 'lblTotal'))
     filtrar_mesas(filtro_mesas_actual)
+
+def sincronizar_cuentas_terminales():
+    """Refresca cuentas abiertas en Windows después de cambios desde HTML."""
+    try:
+        actual = gestion_clientes.cargar_pedidos()
+        cambio = False
+        for nombre in set(actual) | set(pedidos):
+            if nombre in actual and pedidos.get(nombre, []) != actual[nombre]:
+                pedidos[nombre] = actual[nombre]
+                pantalla = ventanas_pedido.get(nombre)
+                if pantalla:
+                    lista = pantalla.findChild(QListWidget, 'Listapedido')
+                    total = pantalla.findChild(QLabel, 'lblTotal')
+                    if lista and total:
+                        actualizar_cuenta(nombre, lista, total)
+                cambio = True
+            elif nombre not in actual and pedidos.get(nombre):
+                pedidos[nombre] = []
+                pantalla = ventanas_pedido.get(nombre)
+                if pantalla:
+                    lista = pantalla.findChild(QListWidget, 'Listapedido')
+                    total = pantalla.findChild(QLabel, 'lblTotal')
+                    if lista and total:
+                        actualizar_cuenta(nombre, lista, total)
+                cambio = True
+        if cambio:
+            filtrar_mesas(filtro_mesas_actual)
+    except (sqlite3.Error, ValueError):
+        pass
+
+temporizador_cuentas_web = QTimer(ventana)
+temporizador_cuentas_web.setInterval(2500)
+temporizador_cuentas_web.timeout.connect(sincronizar_cuentas_terminales)
+temporizador_cuentas_web.start()
 
 pagina_pedidos_table = PaginaPedidosTable(
     sesion, gestion_turnos, reflejar_solicitud_table, btn_pedidos_table, ventana
