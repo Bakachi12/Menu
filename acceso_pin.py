@@ -27,6 +27,32 @@ class AccesoPIN:
             if usuario[0]=='admin':raise ValueError('Admin conserva su contraseña para iniciar sesión y autorizar operaciones.')
             db.execute('INSERT INTO acceso_pin(usuario_id,sal,resumen,iteraciones,intentos,bloqueado,longitud) VALUES(?,?,?,?,0,0,?) ON CONFLICT(usuario_id) DO UPDATE SET sal=excluded.sal,resumen=excluded.resumen,iteraciones=excluded.iteraciones,intentos=0,bloqueado=0,longitud=excluded.longitud',(usuario_id,sal,resumen,self.ITERACIONES,len(pin)))
 
+    def identificar_pin(self, usuario_id, pin):
+        """Verifica un PIN para una sesión web sin alterar la sesión local de Windows."""
+        self.preparar_pines()
+        with self.conexion() as db:
+            db.execute('BEGIN IMMEDIATE')
+            fila = db.execute('''SELECT p.sal,p.resumen,p.iteraciones,p.intentos,p.bloqueado,p.longitud,
+                u.id,u.nombre,u.usuario,u.rol,u.tipo FROM acceso_pin p
+                JOIN usuarios u ON u.id=p.usuario_id
+                WHERE u.id=? AND u.eliminado=0 AND u.rol!='admin' ''', (usuario_id,)).fetchone()
+            if not fila:
+                return None
+            sal, esperado, vueltas, intentos, bloqueado, longitud, *usuario = fila
+            ahora = time.time()
+            if bloqueado > ahora:
+                return None
+            valido = (isinstance(pin, str) and len(pin) == longitud and pin.isascii()
+                      and pin.isdigit() and hmac.compare_digest(
+                          hashlib.pbkdf2_hmac('sha256', pin.encode(), sal, vueltas), esperado))
+            if valido:
+                db.execute('UPDATE acceso_pin SET intentos=0,bloqueado=0 WHERE usuario_id=?',(usuario_id,))
+            else:
+                intentos += 1
+                db.execute('UPDATE acceso_pin SET intentos=?,bloqueado=? WHERE usuario_id=?',
+                           (intentos, ahora+60 if intentos>=5 else 0, usuario_id))
+        return dict(zip(('id','nombre','usuario','rol','tipo'), usuario)) if valido else None
+
     def iniciar_pin(self,usuario_id,pin):
         self.cerrar()
         self.preparar_pines()
