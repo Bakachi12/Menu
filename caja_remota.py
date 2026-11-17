@@ -77,7 +77,7 @@ def modificar(solicitudes, empleado, datos):
             if cliente_id is not None:
                 solicitudes.validar_destino(db, mesa, cliente_id)
                 producto['cliente_id'] = cliente_id
-            if producto.get('seccion') == COCINA:
+            if next((p['seccion'] for p in solicitudes.catalogo(db) if p['id'] == identificador), None) == COCINA:
                 producto['unidad_cocina'] = uuid4().hex
             cuenta.append(producto)
         else:
