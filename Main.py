@@ -261,7 +261,12 @@ contenedor_cobro = ventana.findChild(
     QWidget, "ContenedorCobro"
 )
 layout_pagina_cobro = QVBoxLayout(pagina_cobro)
-layout_pagina_cobro.addWidget(contenedor_cobro)
+# El mínimo del formulario de pago no debe agrandar la ventana al volver a Inicio.
+area_cobro = QScrollArea(pagina_cobro)
+area_cobro.setWidgetResizable(True)
+area_cobro.setFrameShape(QFrame.Shape.NoFrame)
+area_cobro.setWidget(contenedor_cobro)
+layout_pagina_cobro.addWidget(area_cobro)
 layout_cobro = QVBoxLayout(contenedor_cobro)
 layout_cobro.setSpacing(0)
 layout_cobro.setContentsMargins(14, 14, 14, 14)
