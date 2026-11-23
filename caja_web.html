@@ -16,6 +16,16 @@ label{display:block}#status{padding:12px;white-space:pre-wrap;color:#f6c3e5}#sta
 .item small{color:#b2c4d9}.item button{min-height:42px}#checkout{background:#e35dc1;color:#13091a;width:100%;margin-top:12px}
 #total{font-size:27px;font-weight:800;color:#70eaff;margin:16px 0}#login,#link{max-width:520px;margin:30px auto}
 [hidden]{display:none!important}@media(max-width:950px){.columns{grid-template-columns:1fr 1fr}.columns aside{grid-column:1/-1}}@media(max-width:620px){.columns{display:block}.scroll{max-height:none}}
+
+#app{display:grid;grid-template-columns:minmax(125px,176px) minmax(0,1fr);gap:18px}
+nav{display:flex;flex-direction:column;gap:6px}nav button{text-align:left}
+#home{min-height:60vh;background:linear-gradient(#08132999,#08132988),url(/fondo_bar.png) center/cover}
+#home button{display:block;width:100%;margin:12px 0;min-height:76px;font-size:1.2rem}
+#home small{display:block;margin-top:4px;font-size:.85rem}
+#open{border:2px solid #dd72c2}#bar{border:2px solid #41d9e9}
+.columns{grid-template-columns:1.3fr 1fr}.columns aside{grid-column:auto}
+fieldset{border:1px solid #356486;border-radius:8px}fieldset input{width:auto;min-height:auto}
+@media(max-width:720px){#app{display:block}nav{flex-direction:row;overflow-x:auto}nav button{flex-shrink:0}.columns{display:block}}
 </style>
 <header><h1>TISAMAR · Caja</h1><div><span id="identity"></span> <button class="secondary" id="logout" hidden>Cerrar sesión</button></div></header>
 <main><div id="status" role="status"></div>
@@ -24,26 +34,33 @@ label{display:block}#status{padding:12px;white-space:pre-wrap;color:#f6c3e5}#sta
 <section id="login" hidden><h2>Selecciona tu perfil</h2><div id="profiles" class="grid"></div><p id="selected"></p>
 <label id="userlabel">Usuario<input id="user" autocomplete="username"></label><label id="passlabel">Contraseña o PIN<input id="pass" type="password" autocomplete="off"></label>
 <button id="signin">Entrar</button><button class="secondary" id="unlink">Cambiar vínculo</button></section>
-<div id="app" hidden><div class="columns">
-<section><h2>Mesas y cuentas</h2><button id="reload" class="secondary">Actualizar</button><div id="tables" class="grid" style="margin-top:14px"></div></section>
-<section><h2 id="tabletitle">Selecciona una mesa</h2><label>Buscar producto<input id="search" type="search" placeholder="Nombre o categoría"></label><div id="products" class="grid scroll"></div></section>
-<aside><h2>Cuenta abierta</h2><div id="lines" class="scroll"></div><div id="total">$0.00</div><label>Método de pago<select id="payment"><option>Efectivo</option><option>Yappy</option><option>Clave</option><option>Visa</option></select></label>
-<button id="checkout">Cobrar y cerrar cuenta</button><button id="historybtn" class="secondary" style="margin-top:12px;width:100%">Mis cobros</button><div id="history"></div></aside>
-</div></div></main>
+<div id="app" hidden><nav aria-label="Menú de ventas">
+<button data-page="home">Inicio</button><button data-page="mesas">Mesas</button><button data-page="clientes">Clientes</button><button id="historybtn" data-page="historial">Mis cobros</button></nav>
+<div><section id="home"><h2>Inicio</h2><button id="quick">Venta rápida</button>
+<button id="open" class="secondary">Cuentas abiertas<small>Mesas y clientes · Ver totales y continuar pedidos</small></button>
+<button id="bar" class="secondary">Barra<small>Cuentas individuales · Ver consumos y cobrar</small></button></section>
+<section id="list" hidden><h2 id="listtitle"></h2><div id="tables" class="grid"></div></section>
+<section id="historial" hidden><h2>Mis cobros</h2><div id="history"></div></section>
+<div id="sale" class="columns" hidden><section><button id="back" class="secondary">Volver</button><h2 id="tabletitle"></h2><label id="clientlabel">Asignar consumo a<select id="client"></select></label>
+<label>Buscar producto<input id="search" type="search" placeholder="Nombre o categoría"></label><div id="products" class="grid scroll"></div>
+<div id="options" hidden></div></section>
+<aside><h2>Cuenta</h2><div id="lines" class="scroll"></div><div id="total"></div><div id="pay"><label>Método de pago<select id="payment"><option>Efectivo</option><option>Yappy</option><option>Clave</option><option>Visa</option></select></label>
+<button id="checkout">Cobrar</button><div id="confirm" hidden><p id="prompt"></p><button id="yes">Confirmar cobro</button> <button id="no" class="secondary">Cancelar</button></div></div></aside>
+</div></div></div></main>
 <script>
 const $=id=>document.getElementById(id);
 let key='',token='',employee='',profile=null,mesa='',catalog=[],mesas=[],busy=false;
 const show=(id)=>{for(const x of ['link','login','app'])$(x).hidden=x!==id;$('logout').hidden=id!=='app'};
 const msg=t=>$('status').textContent=t;
-function canonical(v){if(Array.isArray(v))return '['+v.map(canonical).join(', ')+']';if(v&&typeof v==='object')return '{'+Object.keys(v).sort().map(k=>JSON.stringify(k)+': '+canonical(v[k])).join(', ')+'}';return JSON.stringify(v)}
-// JSON de Python con sort_keys=True: separadores estándar ", " y ": ".
-const version=cuenta=>canonical(cuenta);
 async function api(path,body){
  const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),10000);
  try{
   const response=await fetch(path,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+key,'X-Sesion':token,...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined,signal:ctrl.signal,cache:'no-store'});
   const data=await response.json();
-  if(!response.ok)throw Error(data.error||'Error del servidor');
+  if(!response.ok){
+   if(response.status===401 && token){token='';show('login');$('pass').value='';}
+   throw Error(data.error||'Error del servidor');
+  }
   return data;
  }finally{clearTimeout(timer)}
 }
@@ -59,49 +76,116 @@ async function profiles(){
 }
 $('linkbtn').onclick=async()=>{try{const url=new URL($('linkvalue').value.trim());
 if(!['http:','https:'].includes(url.protocol)||url.origin!==location.origin||url.pathname!=='/'||!/^#[\w-]{20,100}$/.test(url.hash))throw Error('Abre esta caja en la IP de la PC y pega el enlace original de PedidosTable.');
-key=url.hash.slice(1);await api('/api/vinculo');show('login');await profiles();msg('Terminal vinculada.');
+key=url.hash.slice(1);await api('/api/vinculo');localStorage.setItem('table-vinculo',key);show('login');await profiles();msg('Terminal vinculada.');
 }catch(e){msg(e.message)}};
-$('unlink').onclick=()=>{key='';token='';show('link')};
+$('unlink').onclick=()=>{key='';token='';profile=null;localStorage.removeItem('table-vinculo');show('link')};
 async function signin(){if(busy)return;busy=true;$('signin').disabled=true;try{
 const credentials=profile&&profile.pin?{pin_usuario_id:profile.id,pin:$('pass').value}:{usuario:$('user').value.trim(),password:$('pass').value};
-const result=await api('/api/login',credentials);token=result.token;employee=result.usuario;$('identity').textContent=employee;$('pass').value='';show('app');await refresh();msg('');
+const result=await api('/api/login',credentials);token=result.token;employee=result.usuario;$('identity').textContent=employee;$('pass').value='';busy=false;page='home';msg('');show('app');await refresh();
 }catch(e){msg(e.message)}finally{busy=false;$('signin').disabled=false}}
 $('signin').onclick=signin;
 $('pass').addEventListener('input',()=>{if(profile&&profile.pin&&$('pass').value.length===profile.longitud&&/^\d+$/.test($('pass').value))signin()});
-$('logout').onclick=async()=>{try{await api('/api/logout',{})}catch{}token='';profile=null;mesa='';show('login');profiles()};
+$('logout').onclick=async()=>{try{await api('/api/logout',{})}catch{}token='';profile=null;mesa='';catalog=[];mesas=[];$('identity').textContent='';$('history').replaceChildren();$('pass').value='';show('login');profiles()};
+let page='home',previous='home',canPay=false,sides=[],surcharges={},charge=null;
+const money=c=>'B/.'+(c/100).toFixed(2);
+const titles={mesas:'Mesas',clientes:'Clientes',abiertas:'Cuentas abiertas',barra:'Barra'};
+function button(label,action){
+ const b=document.createElement('button');b.className='secondary';b.textContent=label;b.onclick=action;return b;
+}
 function selectedMesa(){return mesas.find(m=>m.nombre===mesa)}
+function navigate(next){
+ if(busy)return;
+ charge=null;$('confirm').hidden=true;$('options').hidden=true;msg('');page=next;draw();
+ if(next==='historial')historyList();
+}
+function openSale(m,client=''){
+ if(busy||!m)return;
+ $('client').replaceChildren();
+ previous=page;mesa=m.nombre;$('search').value='';navigate('sale');
+ if(client)$('client').value=String(client);
+}
+for(const b of document.querySelectorAll('[data-page]'))b.onclick=()=>navigate(b.dataset.page);
+$('quick').onclick=()=>openSale(mesas.find(m=>m.tipo==='rapida'));
+$('open').onclick=()=>navigate('abiertas');$('bar').onclick=()=>navigate('barra');
+$('back').onclick=()=>navigate(previous);
 function draw(){
- $('tables').replaceChildren();
- for(const m of mesas){const b=document.createElement('button');b.className=m.nombre===mesa?'selected':'secondary';b.textContent=m.nombre+' · $'+(m.total_centimos/100).toFixed(2);b.onclick=()=>{mesa=m.nombre;draw()};$('tables').append(b)}
- $('tabletitle').textContent=mesa||'Selecciona una mesa';
- const term=$('search').value.toLowerCase();$('products').replaceChildren();
- for(const p of catalog.filter(x=>x.nombre.toLowerCase().includes(term)||x.categoria.toLowerCase().includes(term))){
- const b=document.createElement('button');b.className='secondary';b.disabled=!mesa||!p.disponible;b.textContent=p.nombre+' · $'+(p.precio_centimos/100).toFixed(2)+(p.disponible?'':' · Agotado');
- b.onclick=()=>add(p);$('products').append(b)}
- const m=selectedMesa();$('lines').replaceChildren();
- if(m){m.cuenta.forEach((p,i)=>{const d=document.createElement('div');d.className='item';
- const t=document.createElement('span');t.textContent=p.nombre+' · $'+Number(p.precio).toFixed(2);
- const b=document.createElement('button');b.className='secondary';b.textContent='Quitar';b.onclick=()=>change({accion:'retirar',indice:i});d.append(t,b);$('lines').append(d)})}
- $('total').textContent='$'+((m?.total_centimos||0)/100).toFixed(2);$('checkout').disabled=!m||!m.cuenta.length||busy;
+ for(const id of ['home','historial','sale'])$(id).hidden=page!==id;
+ $('list').hidden=!titles[page];$('historybtn').hidden=!canPay;$('pay').hidden=!canPay;
+ $('quick').disabled=!mesas.some(m=>m.tipo==='rapida');
+ if(titles[page]){
+  $('listtitle').textContent=titles[page];const root=$('tables');root.replaceChildren();
+  for(const m of mesas){
+   if(page==='clientes'){
+    for(const c of m.clientes)root.append(button(c.nombre+' · '+m.titulo,()=>openSale(m,c.id)));
+   }else if((page==='mesas'&&m.tipo==='mesa')||(page==='barra'&&m.tipo==='barra')||(page==='abiertas'&&m.cuenta.length)){
+    root.append(button(m.titulo+' · '+money(m.total_centimos),()=>openSale(m)));
+   }
+  }
+  if(!root.children.length)root.textContent=page==='abiertas'?'No hay cuentas abiertas.':page==='barra'?'No hay clientes disponibles en barra.':'No hay registros disponibles.';
+ }
+ if(page!=='sale')return;
+ const m=selectedMesa();if(!m){navigate(previous);return}
+ $('tabletitle').textContent=m.titulo;const sel=$('client'),old=sel.value;sel.replaceChildren(new Option('Cuenta general',''));
+ for(const c of m.clientes)sel.add(new Option(c.nombre,c.id));
+ if([...sel.options].some(o=>o.value===old))sel.value=old;
+ $('clientlabel').hidden=m.tipo!=='mesa'||!m.clientes.length;
+ const term=$('search').value.trim().toLowerCase();$('products').replaceChildren();
+ for(const p of catalog.filter(p=>(p.nombre+' '+p.categoria).toLowerCase().includes(term))){
+  const b=button(p.nombre+' · '+money(p.precio_centimos)+(p.disponible?'':' · Agotado'),()=>choose(p));b.disabled=!p.disponible||busy;$('products').append(b);
+ }
+ $('lines').replaceChildren();m.cuenta.forEach((p,i)=>{
+  const row=document.createElement('div');row.className='item';const t=document.createElement('span');
+  t.textContent=[p.nombre,p.preparacion,p.acompanamiento,p.extra&&'Extra '+p.extra,m.clientes.find(c=>c.id===p.cliente_id)?.nombre,money(Math.round(p.precio*100))].filter(Boolean).join(' · ');
+  row.append(t,button('Quitar',()=>change({accion:'retirar',indice:i})));$('lines').append(row);
+ });
+ $('total').textContent=money(m.total_centimos);$('checkout').disabled=busy||!m.cuenta.length;
 }
-async function refresh(silent=false){if(!token||busy)return;try{const data=await api('/api/resumen');catalog=data.productos;mesas=data.mesas;draw();if(!silent)msg('Datos actualizados desde la PC.')}catch(e){msg(e.message)}}
-async function change(payload){if(busy||!selectedMesa())return;busy=true;try{
- const m=selectedMesa();await api('/api/caja/modificar',{mesa,version:version(m.cuenta),...payload});busy=false;await refresh();
-}catch(e){busy=false;msg(e.message+' Actualiza la cuenta.');await refresh(true)}}
-async function add(p){
- if(p.seccion==='Cocina'){msg('Para platos con preparación o acompañamiento, utiliza PedidosTable hasta completar el selector de cocina en esta caja.');return}
- await change({accion:'agregar',producto_id:p.id,cliente_id:null});
+function choose(p){
+ if(busy)return;
+ const add=seleccion=>change({accion:'agregar',producto_id:p.id,cliente_id:selectedMesa().tipo==='mesa'&&$('client').value?Number($('client').value):null,seleccion});
+ if(p.seccion!=='Cocina'){add({});return}
+ const root=$('options');root.hidden=false;root.replaceChildren();
+ const title=document.createElement('h3');title.textContent=p.nombre;root.append(title);
+ function checks(title,values){
+  const group=document.createElement('fieldset'),legend=document.createElement('legend');legend.textContent=title;group.append(legend);
+  for(const v of values){const label=document.createElement('label'),input=document.createElement('input');input.type='checkbox';input.value=v;label.append(input,' '+v);group.append(label)}
+  if(values.length)root.append(group);return ()=>[...group.querySelectorAll('input:checked')].map(i=>i.value);
+ }
+ const prep=checks('Preparación',p.preparaciones||[]),side=checks('Acompañamientos (hasta '+p.cantidad_acompanamientos+')',p.lleva_acompanamiento?sides:[]);
+ const extra=document.createElement('select');extra.add(new Option('Sin porción extra',''));
+ if(p.lleva_acompanamiento){for(const v of sides.filter(v=>surcharges[v]>0))extra.add(new Option('Porción extra de '+v+' · '+money(surcharges[v]),v));root.append(extra)}
+ root.append(button('Añadir a la cuenta',()=>add({preparacion:prep(),acompanamiento:side(),extra:extra.value})),button('Cancelar',()=>root.hidden=true));root.scrollIntoView({block:'center'});
 }
-$('checkout').onclick=async()=>{const m=selectedMesa();if(!m||busy||!m.cuenta.length)return;
- const metodo=$('payment').value;if(!confirm('¿Cobrar '+m.nombre+' por $'+(m.total_centimos/100).toFixed(2)+' mediante '+metodo+'?'))return;
- busy=true;$('checkout').disabled=true;try{
- const result=await api('/api/caja/cobrar',{mesa,metodo_pago:metodo,version:version(m.cuenta)});
- busy=false;await refresh();msg('Venta #'+result.venta_id+' registrada en la PC.');
- }catch(e){busy=false;msg(e.message+' Verifica el historial antes de repetir el cobro.');await refresh(true)}
+let read=0;
+async function refresh(){
+ const seq=++read,session=token;
+ try{const data=await api('/api/caja/resumen');if(seq!==read||session!==token)return;
+  catalog=data.productos;mesas=data.mesas;sides=data.acompanamientos;surcharges=data.recargos;canPay=data.puede_cobrar;draw();
+ }catch(e){if(session===token)msg(e.message)}
+}
+async function change(payload){
+ if(busy)return;busy=true;++read;const m=selectedMesa();$('confirm').hidden=true;
+ try{await api('/api/caja/modificar',{mesa,version:m.version,...payload});$('options').hidden=true;msg('')}
+ catch(e){msg(e.message)}
+ finally{await refresh();busy=false;draw()}
+}
+$('checkout').onclick=()=>{const m=selectedMesa();charge={mesa,version:m.version,metodo_pago:$('payment').value};$('prompt').textContent='¿Cobrar '+money(m.total_centimos)+' en '+m.titulo+' mediante '+charge.metodo_pago+'?';$('confirm').hidden=false};
+$('no').onclick=()=>{$('confirm').hidden=true;charge=null};
+$('yes').onclick=async()=>{
+ if(!charge||busy)return;busy=true;++read;$('confirm').hidden=true;
+ try{const r=await api('/api/caja/cobrar',charge);page='home';msg('Venta #'+r.venta_id+' registrada en la PC.')}
+ catch(e){msg(e.message+' Revisa Mis cobros antes de repetir.')}
+ finally{charge=null;await refresh();busy=false;draw()}
 };
-$('historybtn').onclick=async()=>{try{const rows=await api('/api/caja/historial');$('history').replaceChildren();
- for(const x of rows){const p=document.createElement('p');p.textContent='#'+x.id+' · '+x.fecha+' · '+x.mesa+' · $'+Number(x.total).toFixed(2)+' · '+x.metodo_pago;$('history').append(p)}
-}catch(e){msg(e.message)}};
-$('reload').onclick=()=>refresh();$('search').oninput=draw;
-setInterval(()=>{if(token&&!busy)refresh(true)},5000);
+async function historyList(){
+ const session=token;
+ try{const rows=await api('/api/caja/historial');if(session!==token)return;$('history').replaceChildren();
+ for(const x of rows){const p=document.createElement('p');p.textContent='#'+x.id+' · '+x.fecha+' · '+x.mesa+' · '+money(Math.round(x.total*100))+' · '+x.metodo_pago;$('history').append(p)}
+ if(!rows.length)$('history').textContent='Todavía no tienes cobros.';
+ }catch(e){msg(e.message)}
+}
+$('search').oninput=draw;
+key=location.hash.slice(1)||localStorage.getItem('table-vinculo')||'';
+if(key){api('/api/vinculo').then(()=>{localStorage.setItem('table-vinculo',key);history.replaceState(null,'',location.pathname);show('login');profiles()}).catch(e=>{show('link');msg(e.message)})}
+setInterval(()=>{if(token&&!busy)refresh()},5000);
 </script></html>

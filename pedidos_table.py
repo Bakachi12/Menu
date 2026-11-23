@@ -324,13 +324,15 @@ class ServidorTable:
                 ruta = urlsplit(self.path).path
                 if ruta == '/fondo_bar.png':
                     return self.responder(200, fondo, 'image/png')
-                if ruta == '/caja':
+                if ruta in ('/', '/caja'):
                     return self.responder(200, pagina_caja, 'text/html; charset=utf-8')
-                if ruta == '/api/caja/historial':
+                if ruta in ('/api/caja/historial', '/api/caja/resumen'):
                     if not self.autorizado():
                         return self.responder(401, dict(error='Inicia sesión.'))
                     try:
-                        from caja_remota import historial
+                        from caja_remota import historial, resumen
+                        if ruta.endswith("/resumen"):
+                            return self.responder(200, resumen(servicio, self.empleado))
                         return self.responder(200, historial(servicio, self.empleado))
                     except PermissionError as e:
                         return self.responder(403, dict(error=str(e)))
@@ -369,7 +371,7 @@ class ServidorTable:
                     if not self.enlace_valido():
                         return self.responder(401, dict(error='El vínculo no es válido o fue retirado. Genera un nuevo enlace de PedidosTable en la caja.', vinculo_invalido=True))
                     return self.responder(200, dict(vinculado=True))
-                if ruta == '/':
+                if ruta == '/solicitudes':
                     return self.responder(200, pagina, 'text/html; charset=utf-8')
                 if not self.autorizado():
                     return self.responder(401, dict(error='Inicia sesión de nuevo o revisa el vínculo con la caja.', vinculo_invalido=not self.enlace_valido()))
@@ -441,7 +443,8 @@ class ServidorTable:
                         if not isinstance(datos, dict):
                             raise ValueError('Datos inválidos.')
                         from caja_remota import modificar, cobrar
-                        resultado = modificar(servicio, self.empleado, datos) if self.path.endswith('/modificar') else cobrar(servicio, self.empleado, datos)
+                        verificado = bool(envio_directo and envio_directo(self.empleado))
+                        resultado = modificar(servicio, self.empleado, datos, verificado) if self.path.endswith('/modificar') else cobrar(servicio, self.empleado, datos, verificado)
                         return self.responder(200, resultado)
                     except (ValueError, UnicodeDecodeError) as e:
                         return self.responder(409, dict(error=str(e)))
